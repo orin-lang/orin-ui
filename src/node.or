@@ -1,0 +1,198 @@
+// The virtual tree a view returns, and the functions that build it.
+//
+// `Node<M>` is generic in the message type `M` of the program: event handlers are typed messages (`On("click", Increment)`),
+// not closures over mutable state. The only function a tree may hold is `OnValue`'s mapping from the event's text
+// payload to a message, and a `Component` thunk. A view is a pure function `model => Node<Msg>`.
+
+// An attribute of an element.
+//   Prop(name, value)        an HTML attribute (`Prop("href", "/")`). A boolean attribute has the value "".
+//   Key(key)                 identity among siblings for the diff (not rendered).
+//   On(event, msg)           on `event` ("click", "submit", ...) the program receives `msg`.
+//   OnValue(event, f)        on `event` the program receives `f(payload)`; the payload is the text the client reports
+//                            (an input's value, a checkbox's "true"/"false", a key name).
+//   NoAttr                   nothing; lets an attribute list contain conditionals (`flag`, `when`).
+export type Attr<M> =
+  Prop(string, string)
+  | Key(string)
+  | On(string, M)
+  | OnValue(string, (value: string) => M)
+  | NoAttr;
+
+// A virtual node.
+//   Element(tag, attrs, children)
+//   Text(s)                  text; it is escaped by every renderer.
+//   Fragment(children)       several nodes without a wrapper element.
+//   Component(name, key, render)  a deferred subtree: `render` runs when the tree is resolved. The key (if any) becomes the
+//                            key of the single element it renders.
+export type Node<M> =
+  Element(string, Attr<M>[], Node<M>[])
+  | Text(string)
+  | Fragment(Node<M>[])
+  | Component(string, Option<string>, () => Node<M>);
+
+// ---------------------------------------------------------------- constructors
+
+// el(tag, attrs, children) -- an element.
+export function el<M>(tag: string, attrs: Attr<M>[], children: Node<M>[]): Node<M> {
+  return Element<M>(tag, attrs, children);
+}
+
+// text(s) -- a text node.
+export function text<M>(s: string): Node<M> {
+  return Text<M>(s);
+}
+
+// fragment(children) -- children without a wrapper.
+export function fragment<M>(children: Node<M>[]): Node<M> {
+  return Fragment<M>(children);
+}
+
+// nothing() -- renders as nothing (an empty fragment).
+export function nothing<M>(): Node<M> {
+  return Fragment<M>([]);
+}
+
+// component(name, render) -- a deferred subtree.
+export function component<M>(name: string, render: () => Node<M>): Node<M> {
+  return Component<M>(name, None, render);
+}
+
+// keyedComponent(name, key, render)
+export function keyedComponent<M>(name: string, key: string, render: () => Node<M>): Node<M> {
+  return Component<M>(name, Some(key), render);
+}
+
+// when(cond, node) -- `node` if `cond`, else nothing.
+export function when<M>(cond: bool, node: Node<M>): Node<M> {
+  if (cond) {
+    return node;
+  }
+  return Fragment<M>([]);
+}
+
+// ---------------------------------------------------------------- attributes
+
+export function attr<M>(name: string, value: string): Attr<M> { return Prop<M>(name, value); }
+export function key<M>(k: string): Attr<M> { return Key<M>(k); }
+export function cls<M>(value: string): Attr<M> { return Prop<M>("class", value); }
+export function id<M>(value: string): Attr<M> { return Prop<M>("id", value); }
+export function href<M>(value: string): Attr<M> { return Prop<M>("href", value); }
+export function src<M>(value: string): Attr<M> { return Prop<M>("src", value); }
+export function style<M>(value: string): Attr<M> { return Prop<M>("style", value); }
+export function title<M>(value: string): Attr<M> { return Prop<M>("title", value); }
+export function name<M>(value: string): Attr<M> { return Prop<M>("name", value); }
+export function value<M>(v: string): Attr<M> { return Prop<M>("value", v); }
+export function placeholder<M>(v: string): Attr<M> { return Prop<M>("placeholder", v); }
+export function inputType<M>(v: string): Attr<M> { return Prop<M>("type", v); }
+export function htmlFor<M>(v: string): Attr<M> { return Prop<M>("for", v); }
+
+// flag(name, on) -- a boolean attribute: present when `on`.
+export function flag<M>(name: string, on: bool): Attr<M> {
+  if (on) {
+    return Prop<M>(name, "");
+  }
+  const none: Attr<M> = NoAttr;
+  return none;
+}
+
+export function disabled<M>(on: bool): Attr<M> { return flag<M>("disabled", on); }
+export function checked<M>(on: bool): Attr<M> { return flag<M>("checked", on); }
+export function selected<M>(on: bool): Attr<M> { return flag<M>("selected", on); }
+export function readonly<M>(on: bool): Attr<M> { return flag<M>("readonly", on); }
+export function autofocus<M>(on: bool): Attr<M> { return flag<M>("autofocus", on); }
+
+// classes(names) -- the `class` attribute from several names, skipping empty ones.
+export function classes<M>(names: string[]): Attr<M> {
+  return Prop<M>("class", names.filter(n => n.length > 0).join(" "));
+}
+
+// classIf(base, extra, cond) -- `base`, plus ` extra` when `cond`.
+export function classIf<M>(base: string, extra: string, cond: bool): Attr<M> {
+  if (cond) {
+    return Prop<M>("class", base + " " + extra);
+  }
+  return Prop<M>("class", base);
+}
+
+// ---------------------------------------------------------------- events
+
+// on(event, msg) -- send `msg` when `event` happens.
+export function on<M>(event: string, msg: M): Attr<M> { return On<M>(event, msg); }
+// onValue(event, f) -- send `f(payload)` when `event` happens.
+export function onValue<M>(event: string, f: (value: string) => M): Attr<M> { return OnValue<M>(event, f); }
+
+export function onClick<M>(msg: M): Attr<M> { return On<M>("click", msg); }
+export function onDoubleClick<M>(msg: M): Attr<M> { return On<M>("dblclick", msg); }
+export function onSubmit<M>(msg: M): Attr<M> { return On<M>("submit", msg); }
+export function onFocus<M>(msg: M): Attr<M> { return On<M>("focus", msg); }
+export function onBlur<M>(msg: M): Attr<M> { return On<M>("blur", msg); }
+export function onInput<M>(f: (value: string) => M): Attr<M> { return OnValue<M>("input", f); }
+export function onChange<M>(f: (value: string) => M): Attr<M> { return OnValue<M>("change", f); }
+export function onKeyDown<M>(f: (value: string) => M): Attr<M> { return OnValue<M>("keydown", f); }
+export function onKeyUp<M>(f: (value: string) => M): Attr<M> { return OnValue<M>("keyup", f); }
+
+// ---------------------------------------------------------------- elements
+// One function per common HTML element: `div(attrs, children)`. Any other element: `el("details", attrs, children)`.
+
+export function div<M>(attrs: Attr<M>[], children: Node<M>[]): Node<M> { return Element<M>("div", attrs, children); }
+export function span<M>(attrs: Attr<M>[], children: Node<M>[]): Node<M> { return Element<M>("span", attrs, children); }
+export function p<M>(attrs: Attr<M>[], children: Node<M>[]): Node<M> { return Element<M>("p", attrs, children); }
+export function h1<M>(attrs: Attr<M>[], children: Node<M>[]): Node<M> { return Element<M>("h1", attrs, children); }
+export function h2<M>(attrs: Attr<M>[], children: Node<M>[]): Node<M> { return Element<M>("h2", attrs, children); }
+export function h3<M>(attrs: Attr<M>[], children: Node<M>[]): Node<M> { return Element<M>("h3", attrs, children); }
+export function a<M>(attrs: Attr<M>[], children: Node<M>[]): Node<M> { return Element<M>("a", attrs, children); }
+export function button<M>(attrs: Attr<M>[], children: Node<M>[]): Node<M> { return Element<M>("button", attrs, children); }
+export function input<M>(attrs: Attr<M>[]): Node<M> { return Element<M>("input", attrs, []); }
+export function textarea<M>(attrs: Attr<M>[], children: Node<M>[]): Node<M> { return Element<M>("textarea", attrs, children); }
+export function select<M>(attrs: Attr<M>[], children: Node<M>[]): Node<M> { return Element<M>("select", attrs, children); }
+export function option<M>(attrs: Attr<M>[], children: Node<M>[]): Node<M> { return Element<M>("option", attrs, children); }
+export function label<M>(attrs: Attr<M>[], children: Node<M>[]): Node<M> { return Element<M>("label", attrs, children); }
+export function form<M>(attrs: Attr<M>[], children: Node<M>[]): Node<M> { return Element<M>("form", attrs, children); }
+export function ul<M>(attrs: Attr<M>[], children: Node<M>[]): Node<M> { return Element<M>("ul", attrs, children); }
+export function ol<M>(attrs: Attr<M>[], children: Node<M>[]): Node<M> { return Element<M>("ol", attrs, children); }
+export function li<M>(attrs: Attr<M>[], children: Node<M>[]): Node<M> { return Element<M>("li", attrs, children); }
+export function table<M>(attrs: Attr<M>[], children: Node<M>[]): Node<M> { return Element<M>("table", attrs, children); }
+export function thead<M>(attrs: Attr<M>[], children: Node<M>[]): Node<M> { return Element<M>("thead", attrs, children); }
+export function tbody<M>(attrs: Attr<M>[], children: Node<M>[]): Node<M> { return Element<M>("tbody", attrs, children); }
+export function tr<M>(attrs: Attr<M>[], children: Node<M>[]): Node<M> { return Element<M>("tr", attrs, children); }
+export function th<M>(attrs: Attr<M>[], children: Node<M>[]): Node<M> { return Element<M>("th", attrs, children); }
+export function td<M>(attrs: Attr<M>[], children: Node<M>[]): Node<M> { return Element<M>("td", attrs, children); }
+export function section<M>(attrs: Attr<M>[], children: Node<M>[]): Node<M> { return Element<M>("section", attrs, children); }
+export function header<M>(attrs: Attr<M>[], children: Node<M>[]): Node<M> { return Element<M>("header", attrs, children); }
+export function footer<M>(attrs: Attr<M>[], children: Node<M>[]): Node<M> { return Element<M>("footer", attrs, children); }
+export function nav<M>(attrs: Attr<M>[], children: Node<M>[]): Node<M> { return Element<M>("nav", attrs, children); }
+export function pre<M>(attrs: Attr<M>[], children: Node<M>[]): Node<M> { return Element<M>("pre", attrs, children); }
+export function code<M>(attrs: Attr<M>[], children: Node<M>[]): Node<M> { return Element<M>("code", attrs, children); }
+export function strong<M>(attrs: Attr<M>[], children: Node<M>[]): Node<M> { return Element<M>("strong", attrs, children); }
+export function em<M>(attrs: Attr<M>[], children: Node<M>[]): Node<M> { return Element<M>("em", attrs, children); }
+export function img<M>(attrs: Attr<M>[]): Node<M> { return Element<M>("img", attrs, []); }
+export function br<M>(): Node<M> { return Element<M>("br", [], []); }
+export function hr<M>(): Node<M> { return Element<M>("hr", [], []); }
+
+// ---------------------------------------------------------------- composition
+
+// mapMsg(node, f) -- the same tree whose messages are mapped through `f`: how a child component with its own message type
+// is embedded in a parent (`Child` messages wrapped as `ChildMsg(m)`).
+export function mapMsg<A, B>(node: Node<A>, f: (a: A) => B): Node<B> {
+  return match (node) {
+    Text(s) => Text<B>(s),
+    Fragment(cs) => Fragment<B>(cs.map(c => mapMsg<A, B>(c, f))),
+    Component(n, k, render) => Component<B>(n, k, () => mapMsg<A, B>(render(), f)),
+    Element(tag, attrs, cs) => Element<B>(tag, attrs.map(at => mapAttr<A, B>(at, f)), cs.map(c => mapMsg<A, B>(c, f))),
+  };
+}
+
+function mapAttr<A, B>(at: Attr<A>, f: (a: A) => B): Attr<B> {
+  return match (at) {
+    Prop(n, v) => Prop<B>(n, v),
+    Key(k) => Key<B>(k),
+    On(e, m) => On<B>(e, f(m)),
+    OnValue(e, g) => OnValue<B>(e, (v: string): B => f(g(v))),
+    NoAttr => noAttr<B>(),
+  };
+}
+
+function noAttr<M>(): Attr<M> {
+  const none: Attr<M> = NoAttr;
+  return none;
+}

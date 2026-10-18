@@ -1,0 +1,89 @@
+// Backend 1: HTML as a string, for server-side rendering.
+//
+// Escaping is part of the contract: text and attribute values are HTML-escaped (`& < > " '`), URL attributes are sanitised, names
+// are validated, `on*` attributes, `srcdoc` and `script` elements are never written. A Dom that was built by hand and breaks
+// these rules renders as if the offending attribute or element were not there.
+import { escape, escapeUrl } from "std:html";
+import { Dom, DomAttr, DElement, DText, EVENTS_ATTR } from "./dom";
+import { isValidTag, isForbiddenTag, isValidAttrName, isAllowedAttr, isUrlAttr, isVoidTag, asciiLower } from "./safe";
+
+// renderHtml(nodes) -- the markup of a list of root nodes.
+export function renderHtml(nodes: Dom[]): string {
+  let out = "";
+  for (const n of nodes) {
+    out += renderNode(n);
+  }
+  return out;
+}
+
+// renderNode(node) -- the markup of one node.
+export function renderNode(node: Dom): string {
+  return match (node) {
+    DText(s) => escape(s),
+    DElement(tag, key, attrs, children) => renderElement(tag, attrs, children),
+  };
+}
+
+function renderElement(tag: string, attrs: DomAttr[], children: Dom[]): string {
+  if (!isValidTag(tag) || isForbiddenTag(tag)) {
+    return "";
+  }
+  let out = "<" + tag;
+  for (const a of attrs) {
+    out += renderAttr(a);
+  }
+  out += ">";
+  if (isVoidTag(tag)) {
+    return out;
+  }
+  const lower = asciiLower(tag);
+  if (children.length > 0 && (lower == "pre" || lower == "textarea" || lower == "listing")) {
+    // The HTML parser drops one newline right after these start tags; keep a leading newline of the text by writing two.
+    match (children[0]) {
+      DText(s) => { if (s.startsWith("\n")) { out += "\n"; } },
+      DElement(t, k, a, c) => {},
+    }
+  }
+  if (lower == "style") {
+    for (const c of children) {
+      match (c) {
+        DText(s) => { out += styleText(s); },
+        DElement(t, k, a, cs) => {},
+      }
+    }
+  } else {
+    for (const c of children) {
+      out += renderNode(c);
+    }
+  }
+  return out + "</" + tag + ">";
+}
+
+function renderAttr(a: DomAttr): string {
+  if (a.name != EVENTS_ATTR && !isAllowedAttr(a.name)) {
+    return "";
+  }
+  if (!isValidAttrName(a.name)) {
+    return "";
+  }
+  if (isUrlAttr(a.name)) {
+    return " " + a.name + "=\"" + escapeUrl(a.value) + "\"";
+  }
+  return " " + a.name + "=\"" + escape(a.value) + "\"";
+}
+
+// The text of a <style> element is raw text: entities are not decoded, so `<` is written as the CSS escape `\3c `.
+function styleText(s: string): string {
+  return s.split("<").join("\\3c ");
+}
+
+// renderPage(title, body, script, endpoint) -- a complete page for a live UI: the document, the mount element with the
+// server-rendered `body` and the client script. `script` is the URL the client (`client/orin-ui.js`) is served from and
+// `endpoint` the URL events are sent to (or a `ws:` / `wss:` URL); the client reads both from the mount element.
+export function renderPage(title: string, body: Dom[], script: string, endpoint: string): string {
+  return "<!DOCTYPE html><html><head><meta charset=\"utf-8\">"
+    + "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+    + "<title>" + escape(title) + "</title></head><body>"
+    + "<div id=\"orin-ui\" data-orin-ui=\"" + escapeUrl(endpoint) + "\">" + renderHtml(body) + "</div>"
+    + "<script src=\"" + escapeUrl(script) + "\"></script></body></html>";
+}

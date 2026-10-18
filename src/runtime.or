@@ -1,0 +1,99 @@
+// The runtime: an Elm-style program (model, update, view) and the sessions that run it.
+//
+// Everything is a value. A `Session` holds the current model and the tree the client was last shown; `send` and `handleEvent`
+// return a new session and the patches that turn the old screen into the new one. A server keeps one session per connected
+// client (in a map, a database row, a cookie: its choice) and replaces it with the one it gets back.
+import { Dom } from "./dom";
+import { Node } from "./node";
+import { VNode, resolve, toDom, messageAt } from "./vnode";
+import { Patch, diff } from "./diff";
+import { ClientEvent, ClientMessage, Join, Event, parseClientMessage, mountMessage, patchMessage } from "./wire";
+
+// A program: the initial model, how a message changes the model, and how the model is shown.
+//   `update` and `view` must be pure functions of their arguments.
+export type Program<Model, Msg> = {
+  init: Model;
+  update: (model: Model, msg: Msg) => Model;
+  view: (model: Model) => Node<Msg>;
+};
+
+// A running program: the model, the resolved view of it (kept to route events back to messages) and the Dom the client shows.
+export type Session<Model, Msg> = {
+  model: Model;
+  tree: VNode<Msg>[];
+  dom: Dom[];
+};
+
+// The outcome of one message or event: the new session and the patches from the previous screen to the new one.
+// `handled` is false when an event matched no handler (the session is unchanged and there are no patches).
+export type Step<Model, Msg> = {
+  session: Session<Model, Msg>;
+  patches: Patch[];
+  handled: bool;
+};
+
+// A reply to send to a client: the new session, and the JSON message (see wire.or) to send. `error` is non-empty when the
+// request was not a valid event.
+export type Reply<Model, Msg> = {
+  session: Session<Model, Msg>;
+  body: string;
+  handled: bool;
+  error: string;
+};
+
+// sessionOf(program, model) -- a session showing `model`.
+export function sessionOf<Model, Msg>(p: Program<Model, Msg>, model: Model): Session<Model, Msg> {
+  const tree = resolve<Msg>(p.view(model));
+  return Session<Model, Msg> { model: model, tree: tree, dom: toDom<Msg>(tree) };
+}
+
+// start(program) -- the session at the initial model.
+export function start<Model, Msg>(p: Program<Model, Msg>): Session<Model, Msg> {
+  return sessionOf<Model, Msg>(p, p.init);
+}
+
+// send(program, session, msg) -- apply a message.
+export function send<Model, Msg>(p: Program<Model, Msg>, s: Session<Model, Msg>, msg: Msg): Step<Model, Msg> {
+  const next = sessionOf<Model, Msg>(p, p.update(s.model, msg));
+  return Step<Model, Msg> { session: next, patches: diff(s.dom, next.dom), handled: true };
+}
+
+// sendAll(program, session, msgs) -- apply several messages in order; the patches go from the first screen to the last.
+export function sendAll<Model, Msg>(p: Program<Model, Msg>, s: Session<Model, Msg>, msgs: Msg[]): Step<Model, Msg> {
+  let model = s.model;
+  for (const m of msgs) {
+    model = p.update(model, m);
+  }
+  const next = sessionOf<Model, Msg>(p, model);
+  return Step<Model, Msg> { session: next, patches: diff(s.dom, next.dom), handled: true };
+}
+
+// handleEvent(program, session, event) -- route a client event to the message of the element at its path and apply it.
+export function handleEvent<Model, Msg>(p: Program<Model, Msg>, s: Session<Model, Msg>, ev: ClientEvent): Step<Model, Msg> {
+  return match (messageAt<Msg>(s.tree, ev.path, ev.event, ev.value)) {
+    Some(msg) => send<Model, Msg>(p, s, msg),
+    None => Step<Model, Msg> { session: s, patches: [], handled: false },
+  };
+}
+
+// respond(program, session, body) -- the whole server side of one request: decode the client's message, apply it and
+// build the reply (a `patch` message, or a `mount` message for a `join`). An invalid or unroutable event leaves the session unchanged; the reply is then an
+// empty patch message (the client has nothing to do) and `error` says why when the request itself was malformed.
+export function respond<Model, Msg>(p: Program<Model, Msg>, s: Session<Model, Msg>, body: string): Reply<Model, Msg> {
+  return match (parseClientMessage(body)) {
+    Ok(m) => match (m) {
+      Join => Reply<Model, Msg> { session: s, body: mountMessage(s.dom), handled: true, error: "" },
+      Event(ev) => replyOf<Model, Msg>(handleEvent<Model, Msg>(p, s, ev)),
+    },
+    Err(e) => Reply<Model, Msg> { session: s, body: patchMessage([]), handled: false, error: e },
+  };
+}
+
+function replyOf<Model, Msg>(step: Step<Model, Msg>): Reply<Model, Msg> {
+  return Reply<Model, Msg> { session: step.session, body: patchMessage(step.patches), handled: step.handled, error: "" };
+}
+
+// mountReply(session) -- the message that shows the whole UI (for a client that connects, or reconnects, and has no screen).
+export function mountReply<Model, Msg>(s: Session<Model, Msg>): string {
+  return mountMessage(s.dom);
+}

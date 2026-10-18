@@ -1,0 +1,183 @@
+// Backend 2: the patch stream. The server sends JSON messages, the client (client/orin-ui.js) applies them to the browser
+// DOM and sends events back as JSON. The full protocol is in docs/design.md.
+//
+// Server to client
+//   {"t":"mount","dom":[N, ...]}            replace the contents of the mount element by these nodes
+//   {"t":"patch","ops":[OP, ...]}           apply the operations in order
+// where a node N is a JSON string (a text node) or {"t":"tag","a":[["name","value"], ...],"c":[N, ...]} and an operation is
+//   {"op":"create","path":[..],"node":N}  {"op":"remove","path":[..]}  {"op":"replace","path":[..],"node":N}
+//   {"op":"attr","path":[..],"name":"..","value":".."}  {"op":"unattr","path":[..],"name":".."}
+//   {"op":"text","path":[..],"text":".."}  {"op":"move","path":[parent..],"from":i,"to":j}
+// Client to server
+//   {"t":"event","path":[..],"event":"click","value":".."}
+//
+// The text is plain JSON in which `< > &` and U+2028/U+2029 are escaped, so it can also be embedded in a <script> element.
+import { parseDocument, defaultReadOptions, JsonValue, JsonMember, ValueObject, ValueArray, ValueString, ValueNumber } from "std:json";
+import { numberAsInt } from "std:json/number";
+import { Dom, DomAttr, DElement, DText } from "./dom";
+import { Patch, Create, Remove, Replace, SetAttr, RemoveAttr, SetText, Move } from "./diff";
+
+const HEX: string = "0123456789abcdef";
+
+// jsonQuote(s) -- `s` as a JSON string literal.
+export function jsonQuote(s: string): string {
+  let out = "\"";
+  let start: usize = 0;
+  let i: usize = 0;
+  const n = s.length;
+  while (i < n) {
+    const c = s.charCodeAt(i);
+    let rep = "";
+    let width: usize = 1;
+    if (c == 34) {
+      rep = "\\\"";
+    } else if (c == 92) {
+      rep = "\\\\";
+    } else if (c == 10) {
+      rep = "\\n";
+    } else if (c == 13) {
+      rep = "\\r";
+    } else if (c == 9) {
+      rep = "\\t";
+    } else if (c < 32 || c == 60 || c == 62 || c == 38 || c == 127) {
+      rep = "\\u00" + HEX.substring((c / 16).toUsize(), (c / 16).toUsize() + 1) + HEX.substring((c % 16).toUsize(), (c % 16).toUsize() + 1);
+    } else if (c == 226 && i + 2 < n && s.charCodeAt(i + 1) == 128 && (s.charCodeAt(i + 2) == 168 || s.charCodeAt(i + 2) == 169)) {
+      rep = s.charCodeAt(i + 2) == 168 ? "\\u2028" : "\\u2029";
+      width = 3;
+    }
+    if (rep.length > 0) {
+      out += s.substring(start, i);
+      out += rep;
+      start = i + width;
+    }
+    i += width;
+  }
+  out += s.substring(start, n);
+  return out + "\"";
+}
+
+function pathJson(path: int[]): string {
+  return "[" + path.map(i => i.toString()).join(",") + "]";
+}
+
+// domJson(node) -- one node as JSON.
+export function domJson(node: Dom): string {
+  return match (node) {
+    DText(s) => jsonQuote(s),
+    DElement(tag, key, attrs, children) => "{\"t\":" + jsonQuote(tag) + ",\"a\":["
+      + attrs.map(a => "[" + jsonQuote(a.name) + "," + jsonQuote(a.value) + "]").join(",")
+      + "],\"c\":[" + children.map(c => domJson(c)).join(",") + "]}",
+  };
+}
+
+// patchJson(patch) -- one operation as JSON.
+export function patchJson(p: Patch): string {
+  return match (p) {
+    Create(path, node) => "{\"op\":\"create\",\"path\":" + pathJson(path) + ",\"node\":" + domJson(node) + "}",
+    Remove(path) => "{\"op\":\"remove\",\"path\":" + pathJson(path) + "}",
+    Replace(path, node) => "{\"op\":\"replace\",\"path\":" + pathJson(path) + ",\"node\":" + domJson(node) + "}",
+    SetAttr(path, name, value) => "{\"op\":\"attr\",\"path\":" + pathJson(path) + ",\"name\":" + jsonQuote(name) + ",\"value\":" + jsonQuote(value) + "}",
+    RemoveAttr(path, name) => "{\"op\":\"unattr\",\"path\":" + pathJson(path) + ",\"name\":" + jsonQuote(name) + "}",
+    SetText(path, text) => "{\"op\":\"text\",\"path\":" + pathJson(path) + ",\"text\":" + jsonQuote(text) + "}",
+    Move(parent, fromIdx, to) => "{\"op\":\"move\",\"path\":" + pathJson(parent) + ",\"from\":" + fromIdx.toString() + ",\"to\":" + to.toString() + "}",
+  };
+}
+
+// mountMessage(roots) -- the message that replaces the whole UI.
+export function mountMessage(roots: Dom[]): string {
+  return "{\"t\":\"mount\",\"dom\":[" + roots.map(n => domJson(n)).join(",") + "]}";
+}
+
+// patchMessage(patches) -- the message that applies a patch list.
+export function patchMessage(patches: Patch[]): string {
+  return "{\"t\":\"patch\",\"ops\":[" + patches.map(p => patchJson(p)).join(",") + "]}";
+}
+
+// ---------------------------------------------------------------- client to server
+
+// An event reported by the client: where (path of the element that handles it), what ("click") and the text payload.
+export type ClientEvent = { path: int[]; event: string; value: string; };
+
+function member(members: JsonMember[], key: string): Option<JsonValue> {
+  for (const m of members) {
+    if (m.key == key) {
+      return Some(m.value);
+    }
+  }
+  return None;
+}
+
+// What a client can send: `Join` asks for the whole UI (a client without server-rendered content, or one that reconnected),
+// `Event` reports a user event.
+export type ClientMessage = Join | Event(ClientEvent);
+
+// parseClientMessage(text) -- decode `{"t":"join"}` or `{"t":"event","path":[..],"event":"..","value":".."}`. Other fields
+// (such as the session id `s`) are ignored.
+export function parseClientMessage(text: string): Result<ClientMessage, string> {
+  const parsed = parseDocument(text, defaultReadOptions());
+  const doc = match (parsed) {
+    Ok(v) => v,
+    Err(e) => { return Err("invalid JSON"); },
+  };
+  const members = match (doc) {
+    ValueObject(ms) => ms,
+    _ => { return Err("not an object"); },
+  };
+  const kind = match (member(members, "t")) {
+    Some(v) => match (v) { ValueString(s) => s, _ => "" },
+    None => "",
+  };
+  if (kind == "join") {
+    return Ok(Join);
+  }
+  if (kind != "event") {
+    return Err("unknown message type");
+  }
+  const ev = eventOf(members)?;
+  return Ok(Event(ev));
+}
+
+// parseClientEvent(text) -- decode an event message (an error for any other message).
+export function parseClientEvent(text: string): Result<ClientEvent, string> {
+  return match (parseClientMessage(text)?) {
+    Event(ev) => Ok(ev),
+    Join => Err("not an event message"),
+  };
+}
+
+function eventOf(members: JsonMember[]): Result<ClientEvent, string> {
+  const event = match (member(members, "event")) {
+    Some(v) => match (v) { ValueString(s) => s, _ => "" },
+    None => "",
+  };
+  if (event.length == 0) {
+    return Err("missing event");
+  }
+  const value = match (member(members, "value")) {
+    Some(v) => match (v) { ValueString(s) => s, _ => "" },
+    None => "",
+  };
+  let path: int[] = [];
+  match (member(members, "path")) {
+    Some(v) => {
+      match (v) {
+        ValueArray(items) => {
+          for (const item of items) {
+            match (item) {
+              ValueNumber(num) => {
+                match (numberAsInt(num)) {
+                  Ok(i) => { path.push(i); },
+                  Err(e) => { return Err("bad path index"); },
+                }
+              },
+              _ => { return Err("bad path index"); },
+            }
+          }
+        },
+        _ => { return Err("bad path"); },
+      }
+    },
+    None => { return Err("missing path"); },
+  }
+  return Ok(ClientEvent { path: path, event: event, value: value });
+}

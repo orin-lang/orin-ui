@@ -1,0 +1,31 @@
+// A counter, written with the builder API. Run: orin run
+import { Node, Program, el, text, div, button, onClick, cls, start, send, renderHtml, renderText, patchesText } from "orin-ui";
+
+type Model = { count: int; };
+type Msg = Increment | Decrement | Reset;
+
+function update(m: Model, msg: Msg): Model {
+  return match (msg) {
+    Increment => Model { count: m.count + 1 },
+    Decrement => Model { count: m.count - 1 },
+    Reset => Model { count: 0 },
+  };
+}
+
+function view(m: Model): Node<Msg> {
+  return div([cls("counter")], [
+    button([onClick(Decrement)], [text("-")]),
+    el("span", [cls("value")], [text(m.count.toString())]),
+    button([onClick(Increment)], [text("+")]),
+    button([onClick(Reset)], [text("reset")]),
+  ]);
+}
+
+function main(): void {
+  const program = Program<Model, Msg> { init: Model { count: 0 }, update: update, view: view };
+  const s0 = start(program);
+  console.log(renderHtml(s0.dom));
+  const step = send(program, s0, Increment);
+  console.log(patchesText(step.patches));
+  console.log(renderText(step.session.dom));
+}

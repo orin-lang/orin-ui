@@ -1,0 +1,104 @@
+// The renderer-facing tree.
+//
+// `Dom` is what every backend consumes: a normalised, message-free tree of elements and text. It has no closures, so it
+// is comparable with `==`, easy to serialise and easy to test. It is produced from a view by `toDom` (see vnode.or).
+//
+// Invariants of a Dom produced by `toDom` (the diff, the patch protocol and the JS client rely on them):
+//   * no empty text node, and no two text nodes next to each other (the browser would merge them);
+//   * tag and attribute names are valid and safe (see safe.or); URL attributes are sanitised;
+//   * a node is addressed by its path: the child indices from the root list, so the DOM and the Dom agree.
+
+export type DomAttr = { name: string; value: string; };
+
+// An element: tag, optional key (identity among siblings, used by the diff only, never rendered), attributes, children.
+export type Dom =
+  DElement(string, Option<string>, DomAttr[], Dom[])
+  | DText(string);
+
+// The reserved attribute that lists the event names an element handles ("click input"). Renderers emit it, the client
+// delegates on it, and the server looks the handler up by path.
+export const EVENTS_ATTR: string = "data-ou-on";
+
+export function domAttr(name: string, value: string): DomAttr {
+  return DomAttr { name: name, value: value };
+}
+
+// Plain constructors for building a Dom by hand (tests, custom backends).
+export function dElement(tag: string, attrs: DomAttr[], children: Dom[]): Dom {
+  return DElement(tag, None, attrs, children);
+}
+
+export function dKeyed(tag: string, key: string, attrs: DomAttr[], children: Dom[]): Dom {
+  return DElement(tag, Some(key), attrs, children);
+}
+
+export function dText(text: string): Dom {
+  return DText(text);
+}
+
+// The value of attribute `name` of an element.
+export function attrValue(attrs: DomAttr[], name: string): Option<string> {
+  for (const a of attrs) {
+    if (a.name == name) {
+      return Some(a.value);
+    }
+  }
+  return None;
+}
+
+// The node at `path` in a list of root nodes.
+export function domAt(roots: Dom[], path: int[]): Option<Dom> {
+  if (path.length == 0) {
+    return None;
+  }
+  let level = roots;
+  let i: usize = 0;
+  while (i < path.length) {
+    const idx = path[i];
+    if (idx < 0 || idx >= level.length.toInt()) {
+      return None;
+    }
+    const node = level[idx.toUsize()];
+    if (i + 1 == path.length) {
+      return Some(node);
+    }
+    match (node) {
+      DElement(t, k, a, c) => { level = c; },
+      DText(s) => { return None; },
+    }
+    i += 1;
+  }
+  return None;
+}
+
+// A compact, unambiguous text form of a Dom (tests and debugging, not for the browser): `<div#key class="a">..</div>`.
+export function dumpDom(nodes: Dom[]): string {
+  let out = "";
+  for (const n of nodes) {
+    out += dumpNode(n);
+  }
+  return out;
+}
+
+function dumpNode(n: Dom): string {
+  return match (n) {
+    DText(s) => "\"" + s + "\"",
+    DElement(tag, key, attrs, children) => dumpElement(tag, key, attrs, children),
+  };
+}
+
+function dumpElement(tag: string, key: Option<string>, attrs: DomAttr[], children: Dom[]): string {
+  let out = "<" + tag;
+  match (key) {
+    Some(k) => { out += "#" + k; },
+    None => {},
+  }
+  for (const a of attrs) {
+    out += " " + a.name + "=" + a.value;
+  }
+  out += ">";
+  for (const c of children) {
+    out += dumpNode(c);
+  }
+  return out + "</>";
+}

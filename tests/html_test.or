@@ -1,0 +1,149 @@
+import { assertEqString, assert } from "std:test";
+import {
+  Dom, dElement, dKeyed, dText, domAttr, Node, Attr, Prop, Element, Text, Fragment, Component,
+  el, text, attr, onClick, key, resolve, toDom, renderHtml, renderPage
+} from "../src";
+
+type Msg = Ping | Pong(string);
+
+function html(n: Node<Msg>): string {
+  return renderHtml(toDom<Msg>(resolve<Msg>(n)));
+}
+
+@Test
+function plainElementsAndText(): void {
+  const n = el<Msg>("div", [attr("class", "a b")], [text("hello "), el<Msg>("b", [], [text("world")])]);
+  assertEqString(html(n), "<div class=\"a b\">hello <b>world</b></div>", "markup");
+}
+
+@Test
+function textIsEscaped(): void {
+  assertEqString(renderHtml([dText("<script>alert(1)</script>")]), "&lt;script&gt;alert(1)&lt;/script&gt;", "script text");
+  assertEqString(renderHtml([dText("a & b < c > d \" e ' f")]), "a &amp; b &lt; c &gt; d &quot; e &#39; f", "all five");
+  assertEqString(renderHtml([dText("&amp;")]), "&amp;amp;", "no double-escaping shortcut");
+  assertEqString(renderHtml([dText("héllo ✓ 日本")]), "héllo ✓ 日本", "utf-8 passes through");
+}
+
+@Test
+function attributeValuesAreEscaped(): void {
+  const hostile = "\" onmouseover=\"alert(1)\" x='";
+  const n = el<Msg>("div", [attr("title", hostile)], []);
+  assertEqString(html(n), "<div title=\"&quot; onmouseover=&quot;alert(1)&quot; x=&#39;\"></div>", "quotes cannot end the value");
+  const m = el<Msg>("a", [attr("data-x", "<>&")], []);
+  assertEqString(html(m), "<a data-x=\"&lt;&gt;&amp;\"></a>", "angle brackets and ampersand");
+}
+
+@Test
+function eventHandlerAttributesAreRefused(): void {
+  const n = el<Msg>("button", [attr("onclick", "alert(1)"), attr("OnMouseOver", "x"), attr("title", "ok")], [text("b")]);
+  assertEqString(html(n), "<button title=\"ok\">b</button>", "on* dropped");
+  // hand-built Dom is defended by the renderer too
+  assertEqString(renderHtml([dElement("p", [domAttr("onclick", "x"), domAttr("id", "i")], [])]), "<p id=\"i\"></p>", "renderer");
+}
+
+@Test
+function srcdocIsRefused(): void {
+  const n = el<Msg>("iframe", [attr("srcdoc", "<script>1</script>"), attr("name", "f")], []);
+  assertEqString(html(n), "<iframe name=\"f\"></iframe>", "srcdoc dropped");
+}
+
+@Test
+function badAttributeNamesAreRefused(): void {
+  const n = el<Msg>("div", [attr("a b", "1"), attr("x\"y", "2"), attr("", "3"), attr("a=b", "4"), attr("a>b", "5"), attr("ok-name_1", "6")], []);
+  assertEqString(html(n), "<div ok-name_1=\"6\"></div>", "only the valid name");
+  assertEqString(renderHtml([dElement("p", [domAttr("x onfocus=alert(1) y", "1")], [])]), "<p></p>", "renderer too");
+}
+
+@Test
+function badTagsAreRefused(): void {
+  assertEqString(html(el<Msg>("div onclick=alert(1)", [], [text("x")])), "", "tag with attributes");
+  assertEqString(html(el<Msg>("scr<ipt", [], [])), "", "angle bracket");
+  assertEqString(html(el<Msg>("script", [], [text("alert(1)")])), "", "script");
+  assertEqString(html(el<Msg>("SCRIPT", [], [text("alert(1)")])), "", "SCRIPT");
+  assertEqString(html(el<Msg>("base", [attr("href", "//evil")], [])), "", "base");
+  assertEqString(html(el<Msg>("meta", [attr("http-equiv", "refresh")], [])), "", "meta");
+  assertEqString(renderHtml([dElement("script", [], [dText("alert(1)")])]), "", "renderer: script");
+  assertEqString(renderHtml([dElement("a b", [], [])]), "", "renderer: bad tag");
+  assertEqString(html(el<Msg>("my-widget", [], [text("x")])), "<my-widget>x</my-widget>", "custom elements are fine");
+}
+
+@Test
+function urlAttributesAreSanitised(): void {
+  const bad = "about:invalid#orin-unsafe-url";
+  assertEqString(html(el<Msg>("a", [attr("href", "javascript:alert(1)")], [])), "<a href=\"" + bad + "\"></a>", "javascript:");
+  assertEqString(html(el<Msg>("a", [attr("href", "JaVaScRiPt:alert(1)")], [])), "<a href=\"" + bad + "\"></a>", "mixed case");
+  assertEqString(html(el<Msg>("a", [attr("href", " javascript:alert(1)")], [])), "<a href=\"" + bad + "\"></a>", "leading space");
+  assertEqString(html(el<Msg>("a", [attr("href", "java\tscript:alert(1)")], [])), "<a href=\"" + bad + "\"></a>", "tab inside");
+  assertEqString(html(el<Msg>("a", [attr("href", "data:text/html,<script>1</script>")], [])), "<a href=\"" + bad + "\"></a>", "data:");
+  assertEqString(html(el<Msg>("img", [attr("src", "vbscript:x")], [])), "<img src=\"" + bad + "\">", "vbscript on src");
+  assertEqString(html(el<Msg>("form", [attr("action", "javascript:x")], [])), "<form action=\"" + bad + "\"></form>", "action");
+  assertEqString(html(el<Msg>("a", [attr("href", "/path?a=1&b=2")], [])), "<a href=\"/path?a=1&amp;b=2\"></a>", "relative, ampersand escaped");
+  assertEqString(html(el<Msg>("a", [attr("href", "https://example.com/x")], [])), "<a href=\"https://example.com/x\"></a>", "https");
+  assertEqString(html(el<Msg>("a", [attr("href", "mailto:a@b.c")], [])), "<a href=\"mailto:a@b.c\"></a>", "mailto");
+  // a hand-built Dom is sanitised by the renderer
+  assertEqString(renderHtml([dElement("a", [domAttr("href", "javascript:1")], [])]), "<a href=\"" + bad + "\"></a>", "renderer");
+}
+
+@Test
+function voidElementsHaveNoEndTag(): void {
+  assertEqString(html(el<Msg>("input", [attr("type", "text"), attr("value", "a\"b")], [])), "<input type=\"text\" value=\"a&quot;b\">", "input");
+  assertEqString(html(el<Msg>("br", [], [])), "<br>", "br");
+  assertEqString(renderHtml([dElement("br", [], [dText("ignored")])]), "<br>", "children of a void element are not written");
+}
+
+@Test
+function booleanAttributesAreWrittenEmpty(): void {
+  assertEqString(html(el<Msg>("button", [attr("disabled", "")], [])), "<button disabled=\"\"></button>", "disabled");
+}
+
+@Test
+function eventsAreMarkedWithDataAttribute(): void {
+  const n = el<Msg>("button", [onClick(Ping), attr("id", "b")], [text("go")]);
+  assertEqString(html(n), "<button id=\"b\" data-ou-on=\"click\">go</button>", "marker");
+  const hostile = el<Msg>("div", [attr("data-ou-on", "click"), attr("id", "x")], []);
+  assertEqString(html(hostile), "<div id=\"x\"></div>", "a program cannot forge the marker");
+}
+
+@Test
+function keysAreNotRendered(): void {
+  assertEqString(html(el<Msg>("li", [key("k1")], [text("x")])), "<li>x</li>", "no key");
+  assertEqString(renderHtml([dKeyed("li", "k", [], [])]), "<li></li>", "renderer no key");
+}
+
+@Test
+function preKeepsALeadingNewline(): void {
+  assertEqString(renderHtml([dElement("pre", [], [dText("\nline")])]), "<pre>\n\nline</pre>", "pre");
+  assertEqString(renderHtml([dElement("pre", [], [dText("line")])]), "<pre>line</pre>", "pre without newline");
+}
+
+@Test
+function styleTextCannotCloseTheElement(): void {
+  assertEqString(renderHtml([dElement("style", [], [dText("a{}</style><script>1</script>")])]), "<style>a{}\\3c /style>\\3c script>1\\3c /script></style>", "style");
+}
+
+@Test
+function pageEscapesItsParts(): void {
+  const page = renderPage("T<i>&", [dText("x")], "/a.js?\"", "javascript:1");
+  assert(page.includes("<title>T&lt;i&gt;&amp;</title>"), "title");
+  assert(page.includes("data-orin-ui=\"about:invalid#orin-unsafe-url\""), "endpoint sanitised");
+  assert(page.includes("src=\"/a.js?&quot;\""), "script url escaped");
+  assert(page.startsWith("<!DOCTYPE html>"), "doctype");
+}
+
+@Test
+function componentsAndFragmentsFlatten(): void {
+  const row = (label: string): Node<Msg> => el<Msg>("li", [], [text(label)]);
+  const n = el<Msg>("ul", [], [
+    Fragment<Msg>([row("a"), Fragment<Msg>([row("b"), row("c")])]),
+    Component<Msg>("Row", None, () => row("d")),
+    Text<Msg>(""),
+  ]);
+  assertEqString(html(n), "<ul><li>a</li><li>b</li><li>c</li><li>d</li></ul>", "flattened");
+}
+
+@Test
+function adjacentTextIsMergedAndEmptyTextDropped(): void {
+  const n = el<Msg>("p", [], [text("a"), text(""), Fragment<Msg>([text("b"), text("c")]), el<Msg>("i", [], []), text("d")]);
+  const dom = toDom<Msg>(resolve<Msg>(n));
+  assertEqString(renderHtml(dom), "<p>abc<i></i>d</p>", "markup");
+}

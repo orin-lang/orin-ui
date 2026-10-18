@@ -1,0 +1,41 @@
+// The backend interface.
+//
+// A backend turns a Dom into output, once (`mount`), and then keeps the output up to date (`update`), seeing the previous tree,
+// the next tree and the patches between them. A stateless backend ignores most of that: the HTML backend re-renders; the patch
+// backend only serialises `patches`; a terminal backend could redraw `after`. Backends are pure: they return the text to
+// send, and the caller (a server, a test, a terminal loop) does the I/O.
+import { Dom } from "./dom";
+import { Patch } from "./diff";
+import { renderHtml } from "./render_html";
+import { mountMessage, patchMessage } from "./wire";
+import { renderText, patchesText } from "./render_text";
+
+export interface Renderer {
+  name(): string;
+  mount(roots: Dom[]): string;
+  update(before: Dom[], after: Dom[], patches: Patch[]): string;
+}
+
+// Server-side rendering: always the full markup.
+export class HtmlRenderer implements Renderer {
+  constructor() {}
+  name(): string { return "html"; }
+  mount(roots: Dom[]): string { return renderHtml(roots); }
+  update(before: Dom[], after: Dom[], patches: Patch[]): string { return renderHtml(after); }
+}
+
+// The JSON patch stream for client/orin-ui.js.
+export class PatchStreamRenderer implements Renderer {
+  constructor() {}
+  name(): string { return "patch-stream"; }
+  mount(roots: Dom[]): string { return mountMessage(roots); }
+  update(before: Dom[], after: Dom[], patches: Patch[]): string { return patchMessage(patches); }
+}
+
+// Text: the outline for `mount`, the operations as lines for `update`.
+export class TextRenderer implements Renderer {
+  constructor() {}
+  name(): string { return "text"; }
+  mount(roots: Dom[]): string { return renderText(roots); }
+  update(before: Dom[], after: Dom[], patches: Patch[]): string { return patchesText(patches); }
+}
