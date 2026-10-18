@@ -70,5 +70,14 @@ test("a blocked localStorage does not break the toggle", () => {
   assert.doesNotThrow(() => Kit.onClick({ target: toggle() }, doc));
 });
 
+test("clicking elsewhere closes open menus but not the one clicked in", () => {
+  const mk = (inside) => { const m = { attrs: { open: "" }, contains: n => n === inside, removeAttribute(k) { delete this.attrs[k]; } }; return m; };
+  const target = {};
+  const a = mk(target), b = mk({});
+  const doc = { querySelectorAll: () => [a, b] };
+  assert.strictEqual(Kit.closeMenus({ target }, doc), 1);
+  assert.ok("open" in a.attrs && !("open" in b.attrs));
+});
+
 console.log(passed + " passed, " + failed + " failed");
 process.exit(failed ? 1 : 0);

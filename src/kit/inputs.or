@@ -294,3 +294,25 @@ export function ThemeToggle<M>(): Node<M> {
     ],
   );
 }
+
+// Menu(label, items) -- a button that opens a small panel of items below it (a `details` element, so it works without scripting;
+// orin-ui-kit.js closes it when something else is clicked).
+export function Menu<M>(label: Node<M>, items: Node<M>[]): Node<M> {
+  return el<M>(
+    "details",
+    [cls<M>("ou-menu")],
+    [
+      el<M>("summary", [cls<M>("ou-menu-trigger")], [label]),
+      el<M>("div", [cls<M>("ou-menu-pop")], items),
+    ],
+  );
+}
+
+// PostForm(action, children) -- a plain HTML form that POSTs to `action` (a page navigation, not a program event): for sign-out.
+export function PostForm<M>(action: string, children: Node<M>[]): Node<M> {
+  return el<M>(
+    "form",
+    [attr<M>("method", "post"), attr<M>("action", action), cls<M>("ou-postform")],
+    children,
+  );
+}

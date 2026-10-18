@@ -13,7 +13,7 @@
   root.OrinUIKit = api;
   if (typeof document !== "undefined") {
     api.applyStored(document.documentElement);
-    document.addEventListener("click", function (e) { api.onClick(e, document); });
+    document.addEventListener("click", function (e) { api.onClick(e, document); api.closeMenus(e, document); });
     document.addEventListener("keydown", function (e) { api.onKey(e, document); });
   }
 })(typeof window !== "undefined" ? window : this, function () {
@@ -55,5 +55,15 @@
     return false;
   }
 
-  return { applyStored: applyStored, apply: apply, next: next, onClick: onClick, onKey: onKey, read: read };
+  // Closes every open `details.ou-menu` that does not contain the click.
+  function closeMenus(e, doc) {
+    var menus = doc.querySelectorAll ? doc.querySelectorAll("details.ou-menu[open]") : [];
+    var closed = 0;
+    for (var i = 0; i < menus.length; i++) {
+      if (!(menus[i].contains && menus[i].contains(e.target))) { menus[i].removeAttribute("open"); closed++; }
+    }
+    return closed;
+  }
+
+  return { closeMenus: closeMenus, applyStored: applyStored, apply: apply, next: next, onClick: onClick, onKey: onKey, read: read };
 });

@@ -9,10 +9,10 @@ import {
   StatusPill, KeyValue, KeyValueGroup, pair, textPair, CodeBlock, JsonBlock, JsonText, Banner,
   Toast, Table, column, numberColumn, sortableColumn, tableRow, unsorted, SortState, linkTab,
   buttonTab, Tabs, Button, SmallButton, IconButton, SubmitButton, LinkButton, Form, TextField,
-  SelectField, choice, Toggle, Dialog, ConfirmDialog, ThemeToggle, AppShell, Sidebar, TopBar,
-  PageHeader, Card, Grid, EmptyState, Loading, NavItem, NavSection, Crumb, ChartSeries, series,
-  ChartSpec, LineChart, AreaChart, BarChart, Sparkline, StatCard, LatencyBar, chartDescription,
-  plotOf, pointX, Legend,
+  SelectField, choice, Toggle, Dialog, ConfirmDialog, ThemeToggle, Menu, PostForm, AppShell,
+  Sidebar, TopBar, PageHeader, Card, Grid, EmptyState, Loading, NavItem, NavSection, Crumb,
+  ChartSeries, series, ChartSpec, LineChart, AreaChart, BarChart, Sparkline, StatCard, LatencyBar,
+  chartDescription, plotOf, pointX, Legend,
 } from "../src";
 
 type Msg = Go | Sort(string) | Close | Submit(string);
@@ -516,4 +516,36 @@ function statCardsAndLatencyBars(): void {
     html(LatencyBar<Msg>(0, 0, 0, "a", "b")).includes("width:0%"),
     "max 0 does not divide by zero",
   );
+}
+
+@Test
+function menusAreDetailsAndPostFormsArePlainForms(): void {
+  const m = html(
+    Menu<Msg>(
+      CodeBlock<Msg>("label"),
+      [PostForm<Msg>("/logout", [SubmitButton<Msg>("Sign out", ButtonPrimary)])],
+    ),
+  );
+  assert(
+    m.includes("<details class=\"ou-menu\">") && m.includes("<summary class=\"ou-menu-trigger\">"),
+    m,
+  );
+  assert(
+    m.includes("method=\"post\"") && m.includes("action=\"/logout\"") && !m.includes("data-ou-on"),
+    "a plain form, not a program event: " + m,
+  );
+}
+
+@Test
+function tableCellsWithoutAClassHaveNoEmptyClassAttribute(): void {
+  const t = html(
+    Table<Msg>(
+      [column("a", "A")],
+      [tableRow<Msg>("r", [CodeBlock<Msg>("x")])],
+      unsorted(),
+      k => Sort(k),
+      CodeBlock<Msg>("none"),
+    ),
+  );
+  assert(!t.includes("class=\"\""), t);
 }

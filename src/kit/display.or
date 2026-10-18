@@ -287,12 +287,21 @@ function alignClass(c: Column): string {
   return c.align == "right" ? "ou-num" : "";
 }
 
+// A class attribute that is left out when there is no class.
+function classOrNone<M>(name: string): Attr<M> {
+  if (name.length == 0) {
+    const none: Attr<M> = NoAttr;
+    return none;
+  }
+  return cls<M>(name);
+}
+
 function HeaderCell<M>(c: Column, sort: SortState, onSort: (key: string) => M): Node<M> {
   const here = c.sortable && sort.key == c.key;
   if (!c.sortable) {
     return el<M>(
       "th",
-      [key<M>(c.key), cls<M>(alignClass(c)), attr<M>("scope", "col")],
+      [key<M>(c.key), classOrNone<M>(alignClass(c)), attr<M>("scope", "col")],
       [text<M>(c.label)],
     );
   }
@@ -300,7 +309,7 @@ function HeaderCell<M>(c: Column, sort: SortState, onSort: (key: string) => M): 
     "th",
     [
       key<M>(c.key),
-      cls<M>(alignClass(c) + " ou-sortable"),
+      cls<M>((alignClass(c) + " ou-sortable").trim()),
       attr<M>("scope", "col"),
       attr<M>("aria-sort", here ? sort.desc ? "descending" : "ascending" : "none"),
     ],
@@ -344,7 +353,7 @@ export function Table<M>(
               let i: usize = 0;
               while (i < r.cells.length) {
                 const align = i < columns.length ? alignClass(columns[i]) : "";
-                cells.push(el<M>("td", [cls<M>(align)], [r.cells[i]]));
+                cells.push(el<M>("td", [classOrNone<M>(align)], [r.cells[i]]));
                 i += 1;
               }
               return el<M>("tr", [key<M>(r.key)], cells);

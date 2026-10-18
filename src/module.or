@@ -50,7 +50,7 @@ export {
 export {
   Button, SmallButton, IconButton, IconLabelButton, SubmitButton, DisabledButton, LinkButton, Form,
   InlineForm, TextField, TextArea, Choice, choice, SelectField, Toggle, Dialog, ConfirmDialog,
-  ThemeToggle,
+  ThemeToggle, Menu, PostForm,
 } from "./kit/inputs";
 export {
   ChartSeries, series, ChartSpec, Plot, plotOf, pointX, chartDescription, Legend, LineChart,
