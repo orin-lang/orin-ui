@@ -1,0 +1,655 @@
+// Charts as SVG, generated in Orin: sparkline, line/area chart, stacked bar chart, stat card and latency bar.
+//
+// Every chart is an `svg` with `role="img"`, an accessible name and description (`<title>`, `<desc>`), a tooltip per data point
+// (`<title>` children, which a browser shows on hover) and a legend as real text. Geometry is computed in tenths of a drawing
+// unit with integers (see scale.or). Colours come from the stylesheet's colour-blind-safe palette (`ou-fill-N`, `ou-stroke-N`);
+// the chart never writes a colour itself, so light and dark mode need nothing here.
+import { Node, Attr, el, text, cls, attr, key, style, nothing, classIf } from "../node";
+import { Tone, toneClass, paletteSlot } from "./theme";
+import { Icon } from "./icons";
+import { Scale, scaleTo, tenths, niceTicks, maxOf, sumOf, compactNumber } from "./scale";
+
+// One data series: a name, one value per point and the palette slot (0..6) it is drawn with.
+export type ChartSeries = { name: string; values: int[]; slot: int; };
+
+export function series(name: string, slot: int, values: int[]): ChartSeries {
+  return ChartSeries { name: name, values: values, slot: slot };
+}
+
+// What a chart needs:
+//   title      the accessible name ("Runs per hour")
+//   labels     one text per point, used in tooltips and the description ("14:00")
+//   ticks      one text per point for the x axis; "" leaves a point without a tick label
+//   series     the data; every series has `labels.length` values
+//   height     the height of the plot in pixels (the width is that of the container); 220 is a good default
+//   yFormat    how a y axis value is written ("1.2k", "3 ms")
+//   yMax       the top of the y axis, 0 to take it from the data
+//   unit       the thing counted, for tooltips and the description ("runs")
+//   empty      what to say when there is nothing to draw ("No runs in this period")
+export type ChartSpec = {
+  title: string;
+  labels: string[];
+  ticks: string[];
+  series: ChartSeries[];
+  height: int;
+  yFormat: (v: int) => string;
+  yMax: int;
+  unit: string;
+  empty: string;
+};
+
+// A chart's drawing is an SVG stretched over the width of its container (`preserveAspectRatio="none"`) at a fixed pixel height, in a
+// coordinate system of 1000 x 1000 where one unit is a permille of the plot. Strokes do not scale (`vector-effect:
+// non-scaling-stroke`) and the text is HTML positioned in percent, so axis labels keep their size at any width. All geometry is in
+// tenths of a unit: a coordinate 2500 is 250.0.
+export type Plot = { x0: int; x1: int; y0: int; y1: int; };
+
+// The whole drawing: x from 0 to 10000, y from 10000 (bottom) to 0 (top).
+export function plotOf(height: int): Plot {
+  return Plot { x0: 0, x1: 10000, y0: 0, y1: 10000 };
+}
+
+function pct(v: int): string {
+  return tenths(v / 10);
+}
+
+function pointCount(spec: ChartSpec): int {
+  return spec.labels.length.toInt();
+}
+
+// The y value above all stacked or plain data.
+function dataMax(spec: ChartSpec, stacked: bool): int {
+  const count = pointCount(spec);
+  if (!stacked) {
+    let m: int = 0;
+    for (const s of spec.series) {
+      const x = maxOf(s.values);
+      if (x > m) {
+        m = x;
+      }
+    }
+    return m;
+  }
+  let m: int = 0;
+  let i: int = 0;
+  while (i < count) {
+    let total: int = 0;
+    for (const s of spec.series) {
+      total += valueAt(s, i);
+    }
+    if (total > m) {
+      m = total;
+    }
+    i += 1;
+  }
+  return m;
+}
+
+function valueAt(s: ChartSeries, i: int): int {
+  return i >= 0 && i < s.values.length.toInt() ? s.values[i.toUsize()] : 0;
+}
+
+// The tooltip of one point: "14:00: succeeded 12, failed 1 runs (total 13)".
+function tipText(spec: ChartSpec, i: int, stacked: bool): string {
+  let parts: string[] = [];
+  let total: int = 0;
+  for (const s of spec.series) {
+    const v = valueAt(s, i);
+    total += v;
+    parts.push(s.name + " " + spec.yFormat(v));
+  }
+  const head = i < pointCount(spec) ? spec.labels[i.toUsize()] : "";
+  const tail = stacked && spec.series.length > 1 ? " (total " + spec.yFormat(total) + ")" : "";
+  return head + ": " + parts.join(", ") + (spec.unit.length > 0 ? " " + spec.unit : "") + tail;
+}
+
+// The description a screen reader gets.
+export function chartDescription(spec: ChartSpec): string {
+  const count = pointCount(spec);
+  if (count == 0) {
+    return spec.title + ": no data.";
+  }
+  let out = spec.title + ". " + count.toString() + " points from " + spec.labels[0] + " to "
+      + spec.labels[count.toUsize() - 1] + ".";
+  for (const s of spec.series) {
+    out += " " + s.name + ": total " + spec.yFormat(sumOf(s.values)) + ", peak "
+        + spec.yFormat(maxOf(s.values)) + ".";
+  }
+  return out;
+}
+
+function key_of(s: string): string {
+  let out = "";
+  let i: usize = 0;
+  while (i < s.length) {
+    const c = s.charCodeAt(i);
+    const ok = c >= 97 && c <= 122 || c >= 48 && c <= 57;
+    out += ok ? s.substring(i, i + 1) : c >= 65 && c <= 90 ? String.fromCharCode(c + 32) : "-";
+    i += 1;
+  }
+  return out;
+}
+
+// Legend(series) -- the swatches and names of the series, as text.
+export function Legend<M>(items: ChartSeries[]): Node<M> {
+  return el<M>(
+    "ul",
+    [cls<M>("ou-legend")],
+    items.map(
+      s => el<M>(
+        "li",
+        [key<M>(s.name)],
+        [
+          el<M>(
+            "span",
+            [
+              cls<M>("ou-swatch ou-fill-" + paletteSlot(s.slot).toString()),
+              attr<M>("aria-hidden", "true"),
+            ],
+            [],
+          ),
+          text<M>(s.name),
+        ],
+      ),
+    ),
+  );
+}
+
+function isEmpty(spec: ChartSpec): bool {
+  if (pointCount(spec) == 0) {
+    return true;
+  }
+  for (const s of spec.series) {
+    if (sumOf(s.values) != 0) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// The x position of the middle of slot i of count: points and bars share the slots, so a single point is centred and labels line up.
+export function pointX(p: Plot, i: int, count: int): int {
+  if (count <= 0) {
+    return (p.x0 + p.x1) / 2;
+  }
+  const slot = (p.x1 - p.x0) / count;
+  return p.x0 + i * slot + slot / 2;
+}
+
+function gridLine<M>(y: int, axis: bool): Node<M> {
+  return el<M>(
+    "line",
+    [
+      cls<M>(axis ? "ou-axis" : "ou-gridline"),
+      attr<M>("x1", "0"),
+      attr<M>("x2", "1000"),
+      attr<M>("y1", tenths(y)),
+      attr<M>("y2", tenths(y)),
+    ],
+    [],
+  );
+}
+
+// The chart: the stretched drawing with the y axis labels on its left and the x labels under it, all as text in HTML.
+function assemble<M>(
+  spec: ChartSpec,
+  ticks: int[],
+  y: Scale,
+  xs: int[],
+  drawing: Node<M>[],
+  empty: bool,
+): Node<M> {
+  let grid: Node<M>[] = [];
+  let ylabels: Node<M>[] = [];
+  for (const t of ticks) {
+    const ty = scaleTo(y, t);
+    grid.push(gridLine<M>(ty, t == 0));
+    ylabels.push(
+      el<M>(
+        "span",
+        [key<M>("y" + t.toString()), cls<M>("ou-ytick"), style<M>("top:" + pct(ty) + "%")],
+        [text<M>(spec.yFormat(t))],
+      ),
+    );
+  }
+  let xlabels: Node<M>[] = [];
+  let i: usize = 0;
+  while (i < spec.ticks.length && i < xs.length) {
+    if (spec.ticks[i].length > 0) {
+      xlabels.push(
+        el<M>(
+          "span",
+          [key<M>("x" + i.toString()), cls<M>("ou-xtick"), style<M>("left:" + pct(xs[i]) + "%")],
+          [text<M>(spec.ticks[i])],
+        ),
+      );
+    }
+    i += 1;
+  }
+  const id = "c-" + key_of(spec.title);
+  const svg = el<M>(
+    "svg",
+    [
+      cls<M>("ou-chart-svg"),
+      attr<M>("viewBox", "0 0 1000 1000"),
+      attr<M>("preserveAspectRatio", "none"),
+      attr<M>("role", "img"),
+      attr<M>("aria-labelledby", id + "-t " + id + "-d"),
+    ],
+    [
+      el<M>("title", [attr<M>("id", id + "-t")], [text<M>(spec.title)]),
+      el<M>("desc", [attr<M>("id", id + "-d")], [text<M>(chartDescription(spec))]),
+    ]
+        .concat(grid)
+        .concat(drawing),
+  );
+  return el<M>(
+    "figure",
+    [cls<M>("ou-chart")],
+    [
+      el<M>(
+        "div",
+        [cls<M>("ou-plot"), style<M>("height:" + spec.height.toString() + "px")],
+        [
+          svg,
+          el<M>("div", [cls<M>("ou-yaxis")], ylabels),
+          el<M>("div", [cls<M>("ou-xaxis")], xlabels),
+          empty
+              ? el<M>(
+                "div",
+                [cls<M>("ou-nodata")],
+                [text<M>(spec.empty.length > 0 ? spec.empty : "No data")],
+              )
+              : nothing<M>(),
+        ],
+      ),
+      spec.series.length > 1 ? Legend<M>(spec.series) : nothing<M>(),
+    ],
+  );
+}
+
+function hitColumns<M>(spec: ChartSpec, xs: int[], slot: int, stacked: bool): Node<M>[] {
+  let out: Node<M>[] = [];
+  let i: usize = 0;
+  while (i < xs.length) {
+    out.push(
+      el<M>(
+        "rect",
+        [
+          key<M>("h" + i.toString()),
+          cls<M>("ou-hit"),
+          attr<M>("x", tenths(xs[i] - slot / 2)),
+          attr<M>("y", "0"),
+          attr<M>("width", tenths(slot)),
+          attr<M>("height", "1000"),
+        ],
+        [el<M>("title", [], [text<M>(tipText(spec, i.toInt(), stacked))])],
+      ),
+    );
+    i += 1;
+  }
+  return out;
+}
+
+// The path of a series: "M x y L x y ...". For an area the path is closed down to the baseline. Coordinates are written in units.
+function pathOf(xs: int[], values: int[], y: Scale, area: bool): string {
+  if (xs.length == 0) {
+    return "";
+  }
+  let d = "";
+  let i: usize = 0;
+  while (i < xs.length) {
+    const v = i < values.length ? values[i] : 0;
+    d += (i == 0 ? "M" : "L") + tenths(xs[i]) + " " + tenths(scaleTo(y, v)) + " ";
+    i += 1;
+  }
+  if (area) {
+    d += "L" + tenths(xs[xs.length - 1]) + " 1000 L" + tenths(xs[0]) + " 1000 Z";
+  }
+  return d;
+}
+
+function axisOf(top: int): Scale {
+  return Scale { d0: 0, d1: top, r0: 10000, r1: 0 };
+}
+
+// LineChart(spec, fill) -- one line per series over the points; `fill` shades the area under each line. Axes, gridlines at
+// "nice" values, a tooltip per point, a legend when there is more than one series. A single point is drawn as a dot; no data as
+// the axes with `spec.empty` in the middle.
+export function LineChart<M>(spec: ChartSpec, fill: bool): Node<M> {
+  const p = plotOf(spec.height);
+  const count = pointCount(spec);
+  const top = spec.yMax > 0 ? spec.yMax : dataMax(spec, false);
+  const ticks = niceTicks(top, 4);
+  const y = axisOf(ticks[ticks.length - 1]);
+  let xs: int[] = [];
+  let i: int = 0;
+  while (i < count) {
+    xs.push(pointX(p, i, count));
+    i += 1;
+  }
+  if (isEmpty(spec)) {
+    return assemble<M>(spec, ticks, y, xs, [], true);
+  }
+  let body: Node<M>[] = [];
+  for (const s of spec.series) {
+    const k = paletteSlot(s.slot).toString();
+    if (fill && count > 1) {
+      body.push(
+        el<M>(
+          "path",
+          [
+            key<M>("a" + s.name),
+            cls<M>("ou-area ou-fill-" + k),
+            attr<M>("d", pathOf(xs, s.values, y, true)),
+          ],
+          [],
+        ),
+      );
+    }
+    if (count > 1) {
+      body.push(
+        el<M>(
+          "path",
+          [
+            key<M>("l" + s.name),
+            cls<M>("ou-line ou-stroke-" + k),
+            attr<M>("d", pathOf(xs, s.values, y, false)),
+          ],
+          [],
+        ),
+      );
+    }
+    if (count <= 24) {
+      let j: usize = 0;
+      while (j < xs.length) {
+        const cx = tenths(xs[j]);
+        const cy = tenths(scaleTo(y, valueAt(s, j.toInt())));
+        // a zero-length line with round caps is a dot that stays round when the drawing is stretched
+        body.push(
+          el<M>(
+            "line",
+            [
+              key<M>("p" + s.name + j.toString()),
+              cls<M>("ou-dot-mark ou-stroke-" + k),
+              attr<M>("x1", cx),
+              attr<M>("x2", cx),
+              attr<M>("y1", cy),
+              attr<M>("y2", cy),
+            ],
+            [],
+          ),
+        );
+        j += 1;
+      }
+    }
+  }
+  const slot = count <= 0 ? 10000 : 10000 / count;
+  return assemble<M>(spec, ticks, y, xs, body.concat(hitColumns<M>(spec, xs, slot, false)), false);
+}
+
+// AreaChart(spec) -- a `LineChart` with the area under each line shaded.
+export function AreaChart<M>(spec: ChartSpec): Node<M> {
+  return LineChart<M>(spec, true);
+}
+
+// BarChart(spec) -- vertical bars, one slot per point; several series are stacked (the first at the bottom). Bars are anchored to
+// the baseline and separated by a thin gap of the page colour; a hover shows every series of the point.
+export function BarChart<M>(spec: ChartSpec): Node<M> {
+  const p = plotOf(spec.height);
+  const count = pointCount(spec);
+  const top = spec.yMax > 0 ? spec.yMax : dataMax(spec, true);
+  const ticks = niceTicks(top, 4);
+  const y = axisOf(ticks[ticks.length - 1]);
+  const slot = count > 0 ? 10000 / count : 10000;
+  let xs: int[] = [];
+  let i: int = 0;
+  while (i < count) {
+    xs.push(pointX(p, i, count));
+    i += 1;
+  }
+  if (isEmpty(spec)) {
+    return assemble<M>(spec, ticks, y, xs, [], true);
+  }
+  const barWidth = slot * 70 / 100;
+  let body: Node<M>[] = [];
+  let j: int = 0;
+  while (j < count) {
+    let below: int = 0;
+    let si: usize = 0;
+    while (si < spec.series.length) {
+      const s = spec.series[si];
+      const v = valueAt(s, j);
+      if (v > 0) {
+        const yTop = scaleTo(y, below + v);
+        const yBottom = scaleTo(y, below);
+        const h = yBottom - yTop < 60 ? 60 : yBottom - yTop;
+        body.push(
+          el<M>(
+            "rect",
+            [
+              key<M>("b" + j.toString() + "-" + s.name),
+              cls<M>("ou-bar ou-fill-" + paletteSlot(s.slot).toString()),
+              attr<M>("x", tenths(xs[j.toUsize()] - barWidth / 2)),
+              attr<M>("y", tenths(yBottom - h)),
+              attr<M>("width", tenths(barWidth)),
+              attr<M>("height", tenths(h)),
+            ],
+            [],
+          ),
+        );
+      }
+      below += v;
+      si += 1;
+    }
+    j += 1;
+  }
+  return assemble<M>(spec, ticks, y, xs, body.concat(hitColumns<M>(spec, xs, slot, true)), false);
+}
+
+// ---------------------------------------------------------------- small ones
+
+function spark_path(xs: int[], values: int[], y: Scale, base: int, area: bool): string {
+  let d = "";
+  let i: usize = 0;
+  while (i < xs.length) {
+    d += (i == 0 ? "M" : "L") + tenths(xs[i]) + " " + tenths(scaleTo(y, values[i])) + " ";
+    i += 1;
+  }
+  if (area) {
+    d += "L" + tenths(xs[xs.length - 1]) + " " + tenths(base) + " L" + tenths(xs[0]) + " "
+        + tenths(base) + " Z";
+  }
+  return d;
+}
+
+// Sparkline(values, width, height, slot, name) -- a tiny line with the area under it and a dot on the last value, no axes. For no
+// values a dashed baseline, for one value a flat line. `name` is the accessible label.
+export function Sparkline<M>(
+  values: int[],
+  width: int,
+  height: int,
+  slot: int,
+  name: string,
+): Node<M> {
+  const k = paletteSlot(slot).toString();
+  const count = values.length.toInt();
+  const pad: int = 30;
+  const x0 = pad;
+  const x1 = width * 10 - pad;
+  const yTop = pad;
+  const yBase = height * 10 - pad;
+  const hi = maxOf(values);
+  const y = Scale { d0: 0, d1: hi, r0: yBase, r1: yTop };
+  let xs: int[] = [];
+  let i: int = 0;
+  while (i < count) {
+    xs.push(count == 1 ? (x0 + x1) / 2 : x0 + i * (x1 - x0) / (count - 1));
+    i += 1;
+  }
+  let body: Node<M>[] = [];
+  if (count == 0) {
+    body.push(
+      el<M>(
+        "line",
+        [
+          cls<M>("ou-spark-empty"),
+          attr<M>("x1", tenths(x0)),
+          attr<M>("x2", tenths(x1)),
+          attr<M>("y1", tenths(yBase)),
+          attr<M>("y2", tenths(yBase)),
+        ],
+        [],
+      ),
+    );
+  } else if (count == 1) {
+    const yy = hi == 0 ? yBase : (yTop + yBase) / 2;
+    body.push(
+      el<M>(
+        "line",
+        [
+          cls<M>("ou-line ou-stroke-" + k),
+          attr<M>("x1", tenths(x0)),
+          attr<M>("x2", tenths(x1)),
+          attr<M>("y1", tenths(yy)),
+          attr<M>("y2", tenths(yy)),
+        ],
+        [],
+      ),
+    );
+    body.push(
+      el<M>(
+        "circle",
+        [
+          cls<M>("ou-fill-" + k),
+          attr<M>("cx", tenths(xs[0])),
+          attr<M>("cy", tenths(yy)),
+          attr<M>("r", "2.5"),
+        ],
+        [],
+      ),
+    );
+  } else {
+    body.push(
+      el<M>(
+        "path",
+        [cls<M>("ou-area ou-fill-" + k), attr<M>("d", spark_path(xs, values, y, yBase, true))],
+        [],
+      ),
+    );
+    body.push(
+      el<M>(
+        "path",
+        [cls<M>("ou-line ou-stroke-" + k), attr<M>("d", spark_path(xs, values, y, yBase, false))],
+        [],
+      ),
+    );
+    body.push(
+      el<M>(
+        "circle",
+        [
+          cls<M>("ou-fill-" + k),
+          attr<M>("cx", tenths(xs[xs.length - 1])),
+          attr<M>("cy", tenths(scaleTo(y, values[values.length - 1]))),
+          attr<M>("r", "2.5"),
+        ],
+        [],
+      ),
+    );
+  }
+  return el<M>(
+    "svg",
+    [
+      cls<M>("ou-spark"),
+      attr<M>("viewBox", "0 0 " + width.toString() + " " + height.toString()),
+      attr<M>("role", "img"),
+      attr<M>("aria-label", name),
+      attr<M>("preserveAspectRatio", "none"),
+    ],
+    [el<M>("title", [], [text<M>(name)])].concat(body),
+  );
+}
+
+// StatCard(label, value, delta, deltaTone, trend, spark, hint) -- a headline number with a label, a change (`delta` may be "") in a
+// tone, an optional sparkline (`trend` empty: none) and a hint line.
+export function StatCard<M>(
+  label: string,
+  value: string,
+  delta: string,
+  deltaTone: Tone,
+  trend: int[],
+  hint: string,
+): Node<M> {
+  return el<M>(
+    "div",
+    [cls<M>("ou-stat")],
+    [
+      el<M>("div", [cls<M>("ou-stat-label")], [text<M>(label)]),
+      el<M>("div", [cls<M>("ou-stat-value")], [text<M>(value)]),
+      el<M>(
+        "div",
+        [cls<M>("ou-stat-foot")],
+        [
+          delta.length > 0
+              ? el<M>("span", [cls<M>("ou-delta " + toneClass(deltaTone))], [text<M>(delta)])
+              : nothing<M>(),
+          hint.length > 0 ? el<M>("span", [cls<M>("ou-stat-hint")], [text<M>(hint)]) : nothing<M>(),
+        ],
+      ),
+      trend.length > 0
+          ? el<M>(
+            "div",
+            [cls<M>("ou-stat-spark")],
+            [Sparkline<M>(trend, 120, 32, 0, label + " trend")],
+          )
+          : nothing<M>(),
+    ],
+  );
+}
+
+// LatencyBar(p50, p95, max, p50Label, p95Label) -- a mini horizontal bar for a run time: the solid part reaches the median, the
+// lighter part the 95th percentile, out of `max`. Values are in the caller's unit; the labels are what is written next to it.
+export function LatencyBar<M>(
+  p50: int,
+  p95: int,
+  max: int,
+  p50Label: string,
+  p95Label: string,
+): Node<M> {
+  const top = max <= 0 ? 1 : max;
+  const w95 = p95 * 100 / top;
+  const w50 = p50 * 100 / top;
+  return el<M>(
+    "div",
+    [
+      cls<M>("ou-latency"),
+      attr<M>("role", "img"),
+      attr<M>("aria-label", "median " + p50Label + ", 95th percentile " + p95Label),
+    ],
+    [
+      el<M>(
+        "div",
+        [cls<M>("ou-latency-track")],
+        [
+          el<M>(
+            "div",
+            [
+              cls<M>("ou-latency-p95"),
+              style<M>("width:" + (w95 > 100 ? 100 : w95).toString() + "%"),
+            ],
+            [],
+          ),
+          el<M>(
+            "div",
+            [
+              cls<M>("ou-latency-p50"),
+              style<M>("width:" + (w50 > 100 ? 100 : w50).toString() + "%"),
+            ],
+            [],
+          ),
+        ],
+      ),
+      el<M>("span", [cls<M>("ou-latency-label")], [text<M>(p50Label + " / " + p95Label)]),
+    ],
+  );
+}

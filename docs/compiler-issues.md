@@ -56,3 +56,14 @@ checkout was not modified.
 `orin build --target=wasm32-orbit` succeeds for `examples/counter`, `examples/todo` and `tools/fixtures` (which together reach
 every module, including `std:json` and `std:html`), and the three modules print byte-for-byte what the native builds print.
 The manifest needs only `log/v1`.
+
+## Found while building the component kit
+
+15. **`type X = Variant;` declares an alias** (see item 8); a program whose message type has no real messages (the kit gallery) needs a
+    second dummy variant: `type Msg = Noop | Spare;`.
+16. **`usize` and `int` never mix**, so every `array.length` in arithmetic with an `int` needs `.toInt()` and every `int` index
+    `.toUsize()`. The chart code is full of them. A literal-typed or inferred index would remove most of the noise.
+17. **No bitwise operators and no shifts** (also in `std`): colour mixing and hashing are written with `/` and `%`.
+18. **No float formatting** in `std` (`toFixed`), so chart geometry is done on integers in tenths of a unit and written by a helper.
+19. **A union variant with a payload cannot be compared with `==`** inside tests without `match`, which makes message assertions
+    verbose (`match (m) { Go => true, _ => false }`).

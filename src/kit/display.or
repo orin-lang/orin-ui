@@ -1,0 +1,397 @@
+// Data display: badges, key/value lists, code, banners, tables and tabs.
+import {
+  JsonValue, JsonMember, ValueNull, ValueBool, ValueNumber, ValueString, ValueArray, ValueObject,
+  parseDocument, defaultReadOptions,
+} from "std:json";
+import { numberAsInt } from "std:json/number";
+import {
+  Node, Attr, el, text, cls, attr, href, key, classIf, nothing, when, onClick,
+} from "../node";
+import { Icon } from "./icons";
+import {
+  Tone, ToneNeutral, ToneSuccess, ToneDanger, ToneWarning, ToneInfo, ToneAccent, toneClass,
+  statusTone,
+} from "./theme";
+
+// Badge(label, tone) -- a small pill of text.
+export function Badge<M>(label: string, tone: Tone): Node<M> {
+  return el<M>("span", [cls<M>("ou-badge " + toneClass(tone))], [text<M>(label)]);
+}
+
+function statusIcon(status: string): string {
+  return match (statusTone(status)) {
+    ToneSuccess => "check",
+    ToneDanger => "x",
+    ToneInfo => "play",
+    ToneWarning => "alert",
+    _ => "",
+  };
+}
+
+// StatusPill(status) -- a badge for a status word (succeeded, failed, running, stopped, ...): colour, an icon and the word itself,
+// so the meaning does not depend on colour alone.
+export function StatusPill<M>(status: string): Node<M> {
+  const tone = statusTone(status);
+  const icon = statusIcon(status);
+  return el<M>(
+    "span",
+    [cls<M>("ou-pill " + toneClass(tone))],
+    [icon.length > 0 ? Icon<M>(icon) : el<M>("span", [cls<M>("ou-dot")], []), text<M>(status)],
+  );
+}
+
+// A row of a key/value list.
+export type Pair<M> = { label: string; value: Node<M>; };
+
+export function pair<M>(label: string, value: Node<M>): Pair<M> {
+  return Pair<M> { label: label, value: value };
+}
+
+export function textPair<M>(label: string, value: string): Pair<M> {
+  return Pair<M> { label: label, value: text<M>(value) };
+}
+
+// KeyValue(pairs) -- a definition list: label on the left, value on the right.
+export function KeyValue<M>(pairs: Pair<M>[]): Node<M> {
+  return el<M>(
+    "dl",
+    [cls<M>("ou-kv")],
+    pairs.map(
+      p => el<M>(
+        "div",
+        [key<M>(p.label), cls<M>("ou-kv-row")],
+        [el<M>("dt", [], [text<M>(p.label)]), el<M>("dd", [], [p.value])],
+      ),
+    ),
+  );
+}
+
+// KeyValueGroup(title, pairs) -- a titled key/value list.
+export function KeyValueGroup<M>(title: string, pairs: Pair<M>[]): Node<M> {
+  return el<M>(
+    "div",
+    [cls<M>("ou-kv-group")],
+    [el<M>("h3", [cls<M>("ou-kv-title")], [text<M>(title)]), KeyValue<M>(pairs)],
+  );
+}
+
+// CodeBlock(code) -- preformatted monospace text.
+export function CodeBlock<M>(code: string): Node<M> {
+  return el<M>("pre", [cls<M>("ou-code")], [el<M>("code", [], [text<M>(code)])]);
+}
+
+// Inline monospace.
+export function Mono<M>(s: string): Node<M> {
+  return el<M>("span", [cls<M>("ou-mono")], [text<M>(s)]);
+}
+
+// ---------------------------------------------------------------- JSON
+
+function quoted(s: string): string {
+  let out = "\"";
+  let i: usize = 0;
+  while (i < s.length) {
+    const c = s.charCodeAt(i);
+    if (c == 34) {
+      out += "\\\"";
+    } else if (c == 92) {
+      out += "\\\\";
+    } else if (c == 10) {
+      out += "\\n";
+    } else if (c == 9) {
+      out += "\\t";
+    } else {
+      out += s.substring(i, i + 1);
+    }
+    i += 1;
+  }
+  return out + "\"";
+}
+
+function spaces(n: int): string {
+  let s = "";
+  let i: int = 0;
+  while (i < n) {
+    s += "  ";
+    i += 1;
+  }
+  return s;
+}
+
+function tok<M>(klass: string, s: string): Node<M> {
+  return el<M>("span", [cls<M>(klass)], [text<M>(s)]);
+}
+
+function jsonNodes<M>(v: JsonValue, depth: int): Node<M>[] {
+  return match (v) {
+    ValueNull => [tok<M>("ou-j-lit", "null")],
+    ValueBool(b) => [tok<M>("ou-j-lit", b ? "true" : "false")],
+    ValueNumber(n) => {
+      const i = numberAsInt(n);
+      return [tok<M>("ou-j-num", i.isOk() ? i.unwrap().toString() : "number")];
+    },
+    ValueString(s) => [tok<M>("ou-j-str", quoted(s))],
+    ValueArray(xs) => {
+      if (xs.length == 0) {
+        return [tok<M>("ou-j-punct", "[]")];
+      }
+      let out: Node<M>[] = [tok<M>("ou-j-punct", "[\n")];
+      let i: usize = 0;
+      while (i < xs.length) {
+        out.push(text<M>(spaces(depth + 1)));
+        for (const n of jsonNodes<M>(xs[i], depth + 1)) {
+          out.push(n);
+        }
+        out.push(tok<M>("ou-j-punct", i + 1 < xs.length ? ",\n" : "\n"));
+        i += 1;
+      }
+      out.push(text<M>(spaces(depth)));
+      out.push(tok<M>("ou-j-punct", "]"));
+      return out;
+    },
+    ValueObject(ms) => {
+      if (ms.length == 0) {
+        return [tok<M>("ou-j-punct", "{}")];
+      }
+      let out: Node<M>[] = [tok<M>("ou-j-punct", "{\n")];
+      let i: usize = 0;
+      while (i < ms.length) {
+        out.push(text<M>(spaces(depth + 1)));
+        out.push(tok<M>("ou-j-key", quoted(ms[i].key)));
+        out.push(tok<M>("ou-j-punct", ": "));
+        for (const n of jsonNodes<M>(ms[i].value, depth + 1)) {
+          out.push(n);
+        }
+        out.push(tok<M>("ou-j-punct", i + 1 < ms.length ? ",\n" : "\n"));
+        i += 1;
+      }
+      out.push(text<M>(spaces(depth)));
+      out.push(tok<M>("ou-j-punct", "}"));
+      return out;
+    },
+  };
+}
+
+// JsonBlock(value) -- a JSON value pretty-printed with two-space indentation and coloured tokens (keys, strings, numbers).
+// Numbers that do not fit an `int` are shown as "number".
+export function JsonBlock<M>(v: JsonValue): Node<M> {
+  return el<M>("pre", [cls<M>("ou-code ou-json")], [el<M>("code", [], jsonNodes<M>(v, 0))]);
+}
+
+// JsonText(source) -- `JsonBlock` of a JSON document given as text; a text that is not JSON is shown as it is.
+export function JsonText<M>(source: string): Node<M> {
+  const parsed = parseDocument(source, defaultReadOptions());
+  if (parsed.isErr()) {
+    return CodeBlock<M>(source);
+  }
+  return JsonBlock<M>(parsed.unwrap());
+}
+
+// ---------------------------------------------------------------- banners
+
+function toneIcon(t: Tone): string {
+  return match (t) {
+    ToneSuccess => "check",
+    ToneDanger => "alert",
+    ToneWarning => "alert",
+    _ => "info",
+  };
+}
+
+// Banner(tone, title, message, actions) -- a message that stays in the page: an icon, a bold title, text, and actions on the right.
+// Errors and warnings are announced to screen readers (`role="alert"`), the rest politely (`role="status"`).
+export function Banner<M>(tone: Tone, title: string, message: string, actions: Node<M>[]): Node<M> {
+  const urgent = match (tone) {
+    ToneDanger => true,
+    ToneWarning => true,
+    _ => false,
+  };
+  return el<M>(
+    "div",
+    [cls<M>("ou-banner " + toneClass(tone)), attr<M>("role", urgent ? "alert" : "status")],
+    [
+      Icon<M>(toneIcon(tone)),
+      el<M>(
+        "div",
+        [cls<M>("ou-banner-text")],
+        [
+          title.length > 0 ? el<M>("strong", [], [text<M>(title)]) : nothing<M>(),
+          message.length > 0 ? el<M>("span", [], [text<M>(message)]) : nothing<M>(),
+        ],
+      ),
+      actions.length > 0 ? el<M>("div", [cls<M>("ou-banner-actions")], actions) : nothing<M>(),
+    ],
+  );
+}
+
+// Toast(tone, message, dismiss) -- a short message in the corner of the screen with a close button that sends `dismiss`.
+export function Toast<M>(tone: Tone, message: string, link: string, dismiss: M): Node<M> {
+  return el<M>(
+    "div",
+    [cls<M>("ou-toast-region"), attr<M>("aria-live", "polite")],
+    [
+      el<M>(
+        "div",
+        [cls<M>("ou-toast " + toneClass(tone))],
+        [
+          Icon<M>(toneIcon(tone)),
+          el<M>("span", [cls<M>("ou-toast-text")], [text<M>(message)]),
+          link.length > 0 ? el<M>("a", [href<M>(link)], [text<M>("View")]) : nothing<M>(),
+          el<M>(
+            "button",
+            [
+              cls<M>("ou-icon-btn"),
+              attr<M>("type", "button"),
+              attr<M>("aria-label", "Dismiss"),
+              onClick<M>(dismiss),
+            ],
+            [Icon<M>("x")],
+          ),
+        ],
+      ),
+    ],
+  );
+}
+
+// ---------------------------------------------------------------- table
+
+// A column: `key` identifies it in sort messages, `align` is "left" or "right" (numbers), `sortable` adds the header button.
+export type Column = { key: string; label: string; align: string; sortable: bool; };
+
+export function column(key: string, label: string): Column {
+  return Column { key: key, label: label, align: "left", sortable: false };
+}
+
+export function numberColumn(key: string, label: string): Column {
+  return Column { key: key, label: label, align: "right", sortable: true };
+}
+
+export function sortableColumn(key: string, label: string): Column {
+  return Column { key: key, label: label, align: "left", sortable: true };
+}
+
+export type TableRow<M> = { key: string; cells: Node<M>[]; };
+
+export function tableRow<M>(rowKey: string, cells: Node<M>[]): TableRow<M> {
+  return TableRow<M> { key: rowKey, cells: cells };
+}
+
+// The column the rows are sorted by, and the direction. `key == ""`: unsorted.
+export type SortState = { key: string; desc: bool; };
+
+export function unsorted(): SortState {
+  return SortState { key: "", desc: false };
+}
+
+function alignClass(c: Column): string {
+  return c.align == "right" ? "ou-num" : "";
+}
+
+function HeaderCell<M>(c: Column, sort: SortState, onSort: (key: string) => M): Node<M> {
+  const here = c.sortable && sort.key == c.key;
+  if (!c.sortable) {
+    return el<M>(
+      "th",
+      [key<M>(c.key), cls<M>(alignClass(c)), attr<M>("scope", "col")],
+      [text<M>(c.label)],
+    );
+  }
+  return el<M>(
+    "th",
+    [
+      key<M>(c.key),
+      cls<M>(alignClass(c) + " ou-sortable"),
+      attr<M>("scope", "col"),
+      attr<M>("aria-sort", here ? sort.desc ? "descending" : "ascending" : "none"),
+    ],
+    [
+      el<M>(
+        "button",
+        [cls<M>("ou-th-btn"), attr<M>("type", "button"), onClick<M>(onSort(c.key))],
+        [text<M>(c.label), here ? Icon<M>(sort.desc ? "arrow-down" : "arrow-up") : nothing<M>()],
+      ),
+    ],
+  );
+}
+
+// Table(columns, rows, sort, onSort, empty) -- a data table with tabular numerals. A sortable column header is a button that sends
+// `onSort(column key)`; the caller sorts the rows (`sort` only draws the arrow and `aria-sort`). With no rows the `empty` node is
+// shown in place of the body.
+export function Table<M>(
+  columns: Column[],
+  rows: TableRow<M>[],
+  sort: SortState,
+  onSort: (key: string) => M,
+  empty: Node<M>,
+): Node<M> {
+  if (rows.length == 0) {
+    return el<M>("div", [cls<M>("ou-table-empty")], [empty]);
+  }
+  return el<M>(
+    "div",
+    [cls<M>("ou-table-wrap")],
+    [
+      el<M>(
+        "table",
+        [cls<M>("ou-table")],
+        [
+          el<M>("thead", [], [el<M>("tr", [], columns.map(c => HeaderCell<M>(c, sort, onSort)))]),
+          el<M>(
+            "tbody",
+            [],
+            rows.map(r => {
+              let cells: Node<M>[] = [];
+              let i: usize = 0;
+              while (i < r.cells.length) {
+                const align = i < columns.length ? alignClass(columns[i]) : "";
+                cells.push(el<M>("td", [cls<M>(align)], [r.cells[i]]));
+                i += 1;
+              }
+              return el<M>("tr", [key<M>(r.key)], cells);
+            }),
+          ),
+        ],
+      ),
+    ],
+  );
+}
+
+// ---------------------------------------------------------------- tabs
+
+// A tab: a link (`href` set) or a button that sends `msg`. `count` is "" or a small number shown beside the label.
+export type Tab<M> = { label: string; href: string; active: bool; count: string; msg: Option<M>; };
+
+export function linkTab<M>(label: string, href: string, active: bool, count: string): Tab<M> {
+  return Tab<M> { label: label, href: href, active: active, count: count, msg: None };
+}
+
+export function buttonTab<M>(label: string, active: bool, count: string, msg: M): Tab<M> {
+  return Tab<M> { label: label, href: "", active: active, count: count, msg: Some(msg) };
+}
+
+function TabItem<M>(t: Tab<M>): Node<M> {
+  const inner: Node<M>[] = [
+    text<M>(t.label),
+    t.count.length > 0 ? el<M>("span", [cls<M>("ou-tab-count")], [text<M>(t.count)]) : nothing<M>(),
+  ];
+  const attrs: Attr<M>[] = [
+    key<M>(t.label),
+    classIf<M>("ou-tab", "active", t.active),
+    attr<M>("role", "tab"),
+    attr<M>("aria-selected", t.active ? "true" : "false"),
+  ];
+  if (t.href.length > 0) {
+    return el<M>("a", attrs.concat([href<M>(t.href)]), inner);
+  }
+  const click: Attr<M>[] = t.msg.isSome() ? [onClick<M>(t.msg.unwrap())] : [];
+  return el<M>("button", attrs.concat([attr<M>("type", "button")]).concat(click), inner);
+}
+
+// Tabs(tabs) -- a row of tabs with an underline on the active one.
+export function Tabs<M>(tabs: Tab<M>[]): Node<M> {
+  return el<M>(
+    "div",
+    [cls<M>("ou-tabs"), attr<M>("role", "tablist")],
+    tabs.map(t => TabItem<M>(t)),
+  );
+}

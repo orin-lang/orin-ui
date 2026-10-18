@@ -457,6 +457,26 @@ change that did not come from the client, `send(program, session, msg)` and send
 
 `examples/counter/src/main.or` runs this flow in-process.
 
+## Component kit
+
+`src/kit/` holds components for dashboards. They follow the rest of the library: a component is a function from values to
+`Node<Msg>`, an event is a typed message handed in by the caller (`Button(label, kind, msg)`, `Table(..., onSort)`), nothing holds
+state, and nothing is specific to a renderer: the output is ordinary elements and attributes, so the HTML, patch-stream and text
+backends all work, and the diff keeps rows, tabs and nav links stable through `key`s.
+
+* **Styling by class, not by value.** A component sets `ou-*` classes; `client/orin-ui-kit.css` defines them from CSS variables for
+  light and dark (`prefers-color-scheme`, overridden by `data-theme` on `<html>`, which `client/orin-ui-kit.js` sets from the theme toggle
+  and remembers). Colour is never the only signal: a status pill has an icon and a word, a series has a legend and a tooltip.
+* **Charts** (`charts.or`, `scale.or`). A chart is an `svg` stretched over its container at a fixed pixel height
+  (`preserveAspectRatio="none"`, strokes `non-scaling`), in a 1000 x 1000 coordinate system whose numbers are computed on integers in
+  tenths of a unit (`tenths(2500)` = `250`), so output is exact and identical native and on wasm32-orbit. Axis labels and ticks are HTML
+  placed in percent, which keeps them readable at any width. Axes use `niceTicks` (steps of 1, 2, 5 x 10^k). Every chart has `role="img"`,
+  `<title>`, `<desc>` (totals and peaks per series) and an invisible hit column per point with a `<title>` tooltip. Empty data, one
+  point, all zeros and a zero-width domain are handled and tested.
+* **Palette.** Seven slots (Okabe and Ito: blue, vermillion, green, orange, purple, sky, olive), validated for colour-vision
+  deficiency separation in light mode and against the dark surface in dark mode; slots are assigned by series, in order, never cycled.
+* **Safety** is unchanged: all text goes through the node layer (escaped), link `href`s are sanitised, and icons are fixed path data.
+
 ## Limits
 
 * No hooks, no context, no portals, no refs. Focus is preserved by not recreating nodes; the program cannot ask for focus.

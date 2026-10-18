@@ -76,6 +76,24 @@ import { Node, Program, el, div, text, onClick, start, send, handleEvent, respon
 | Lowering | `resolve`, `toDom`, `Dom` (`DElement`, `DText`), `messageAt` |
 | Backends | `Renderer` interface; `renderHtml`, `renderPage`; `mountMessage`, `patchMessage`, `parseClientMessage`; `renderText`, `patchesText`; `HtmlRenderer`, `PatchStreamRenderer`, `TextRenderer` |
 
+## Component kit
+
+`orin-ui` also ships a renderer-agnostic component kit (`src/kit/`, exported from the package): the pieces of a dashboard, as plain
+functions that return `Node<Msg>`. Styles are in [`client/orin-ui-kit.css`](client/orin-ui-kit.css) (light and dark, one accent colour,
+an 8px grid, tabular numerals, thin borders) and the small theme-toggle script in [`client/orin-ui-kit.js`](client/orin-ui-kit.js).
+
+| Area | Components |
+|---|---|
+| Layout | `AppShell`, `Sidebar` (sections, active item), `TopBar`, `PageHeader` (breadcrumbs, actions), `Card`, `FlushCard`, `Grid`, `Stack`, `Inline`, `EmptyState`, `Loading` |
+| Data | `Table` (sortable header, empty state), `Tabs`, `Badge`, `StatusPill`, `KeyValue`, `KeyValueGroup`, `CodeBlock`, `JsonBlock`, `Banner`, `Toast` |
+| Inputs | `Button` (primary, secondary, danger, ghost; small, icon), `Form`, `TextField`, `TextArea`, `SelectField`, `Toggle`, `Dialog`, `ConfirmDialog`, `ThemeToggle` |
+| Charts (SVG) | `StatCard`, `Sparkline`, `LineChart`, `AreaChart`, `BarChart` (stacked), `LatencyBar`, `Legend` |
+
+Charts are generated in Orin: integer geometry (tenths of a unit, no float formatting), "nice" axis ticks, gridlines, a `<title>`
+tooltip per point, an accessible name and description, and the colour-blind-safe Okabe-Ito palette (`ou-fill-N`). Axis labels are HTML
+positioned in percent over a stretched SVG, so text keeps its size at any width. `tools/gallery.sh` renders
+[`examples/kit-gallery`](examples/kit-gallery), every component on one page; see [docs/design.md](docs/design.md#component-kit).
+
 ## Examples
 
 | | |

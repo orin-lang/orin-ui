@@ -1,0 +1,296 @@
+// Inputs: buttons, text fields, selects, toggles, forms and dialogs.
+import {
+  Node, Attr, el, text, cls, attr, href, key, id, value, name, placeholder, inputType, selected,
+  disabled, autofocus, onClick, onValue, nothing, classIf,
+} from "../node";
+import { Icon } from "./icons";
+import {
+  ButtonKind, ButtonPrimary, ButtonSecondary, ButtonDanger, ButtonGhost, buttonClass,
+} from "./theme";
+
+// Button(label, kind, msg) -- a button that sends `msg` when clicked.
+export function Button<M>(label: string, kind: ButtonKind, msg: M): Node<M> {
+  return el<M>(
+    "button",
+    [cls<M>(buttonClass(kind, false)), attr<M>("type", "button"), onClick<M>(msg)],
+    [text<M>(label)],
+  );
+}
+
+// SmallButton(label, kind, msg) -- the same, compact (for table rows).
+export function SmallButton<M>(label: string, kind: ButtonKind, msg: M): Node<M> {
+  return el<M>(
+    "button",
+    [cls<M>(buttonClass(kind, true)), attr<M>("type", "button"), onClick<M>(msg)],
+    [text<M>(label)],
+  );
+}
+
+// IconButton(icon, label, kind, msg) -- a button with only an icon; `label` is its accessible name and tooltip.
+export function IconButton<M>(icon: string, label: string, kind: ButtonKind, msg: M): Node<M> {
+  return el<M>(
+    "button",
+    [
+      cls<M>(buttonClass(kind, false) + " ou-btn-icon"),
+      attr<M>("type", "button"),
+      attr<M>("aria-label", label),
+      attr<M>("title", label),
+      onClick<M>(msg),
+    ],
+    [Icon<M>(icon)],
+  );
+}
+
+// IconLabelButton(icon, label, kind, msg) -- an icon and a text.
+export function IconLabelButton<M>(icon: string, label: string, kind: ButtonKind, msg: M): Node<M> {
+  return el<M>(
+    "button",
+    [cls<M>(buttonClass(kind, false)), attr<M>("type", "button"), onClick<M>(msg)],
+    [Icon<M>(icon), text<M>(label)],
+  );
+}
+
+// SubmitButton(label, kind) -- the submit button of a `Form`.
+export function SubmitButton<M>(label: string, kind: ButtonKind): Node<M> {
+  return el<M>(
+    "button",
+    [cls<M>(buttonClass(kind, false)), attr<M>("type", "submit")],
+    [text<M>(label)],
+  );
+}
+
+// DisabledButton(label, kind) -- a button that does nothing (an action that is not available now).
+export function DisabledButton<M>(label: string, kind: ButtonKind): Node<M> {
+  return el<M>(
+    "button",
+    [cls<M>(buttonClass(kind, false)), attr<M>("type", "button"), disabled<M>(true)],
+    [text<M>(label)],
+  );
+}
+
+// LinkButton(label, kind, href) -- a link that looks like a button (navigation, not an action).
+export function LinkButton<M>(label: string, kind: ButtonKind, to: string): Node<M> {
+  return el<M>("a", [cls<M>(buttonClass(kind, false)), href<M>(to)], [text<M>(label)]);
+}
+
+// Form(onSubmit, children) -- a form; on submit the program receives `onSubmit(fields)` where `fields` is the url-encoded text of
+// the controls that have a `name`.
+export function Form<M>(onSubmit: (fields: string) => M, children: Node<M>[]): Node<M> {
+  return el<M>("form", [cls<M>("ou-form"), onValue<M>("submit", onSubmit)], children);
+}
+
+// InlineForm -- the same, laid out in a row (filter bars).
+export function InlineForm<M>(onSubmit: (fields: string) => M, children: Node<M>[]): Node<M> {
+  return el<M>(
+    "form",
+    [cls<M>("ou-form ou-form-inline"), onValue<M>("submit", onSubmit)],
+    children,
+  );
+}
+
+// TextField(name, label, current, placeholder, hint) -- a labelled text input whose value is `current`. `hint` is "" or help text
+// under the field.
+export function TextField<M>(
+  fieldName: string,
+  label: string,
+  current: string,
+  hint: string,
+  example: string,
+): Node<M> {
+  return el<M>(
+    "label",
+    [cls<M>("ou-field")],
+    [
+      label.length > 0 ? el<M>("span", [cls<M>("ou-label")], [text<M>(label)]) : nothing<M>(),
+      el<M>(
+        "input",
+        [
+          cls<M>("ou-input"),
+          name<M>(fieldName),
+          inputType<M>("text"),
+          value<M>(current),
+          placeholder<M>(example),
+          attr<M>("autocomplete", "off"),
+          attr<M>("spellcheck", "false"),
+        ],
+        [],
+      ),
+      hint.length > 0 ? el<M>("span", [cls<M>("ou-hint")], [text<M>(hint)]) : nothing<M>(),
+    ],
+  );
+}
+
+// TextArea(name, label, current, placeholder) -- a multi-line input.
+export function TextArea<M>(
+  fieldName: string,
+  label: string,
+  current: string,
+  example: string,
+): Node<M> {
+  return el<M>(
+    "label",
+    [cls<M>("ou-field")],
+    [
+      label.length > 0 ? el<M>("span", [cls<M>("ou-label")], [text<M>(label)]) : nothing<M>(),
+      el<M>(
+        "textarea",
+        [
+          cls<M>("ou-input ou-textarea"),
+          name<M>(fieldName),
+          placeholder<M>(example),
+          attr<M>("rows", "4"),
+          attr<M>("spellcheck", "false"),
+        ],
+        [text<M>(current)],
+      ),
+    ],
+  );
+}
+
+// An option of a select: the value sent and the text shown.
+export type Choice = { value: string; label: string; };
+
+export function choice(v: string, label: string): Choice {
+  return Choice { value: v, label: label };
+}
+
+// SelectField(name, label, choices, current) -- a labelled select with `current` chosen.
+export function SelectField<M>(
+  fieldName: string,
+  label: string,
+  choices: Choice[],
+  current: string,
+): Node<M> {
+  return el<M>(
+    "label",
+    [cls<M>("ou-field")],
+    [
+      label.length > 0 ? el<M>("span", [cls<M>("ou-label")], [text<M>(label)]) : nothing<M>(),
+      el<M>(
+        "select",
+        [cls<M>("ou-input ou-select"), name<M>(fieldName)],
+        choices.map(
+          c => el<M>(
+            "option",
+            [key<M>(c.value), value<M>(c.value), selected<M>(c.value == current)],
+            [text<M>(c.label)],
+          ),
+        ),
+      ),
+    ],
+  );
+}
+
+// Toggle(label, on, msg) -- a switch (`role="switch"`, `aria-checked`) that sends `msg` when clicked; the program flips its state.
+export function Toggle<M>(label: string, on: bool, msg: M): Node<M> {
+  return el<M>(
+    "button",
+    [
+      classIf<M>("ou-toggle", "on", on),
+      attr<M>("type", "button"),
+      attr<M>("role", "switch"),
+      attr<M>("aria-checked", on ? "true" : "false"),
+      onClick<M>(msg),
+    ],
+    [
+      el<M>(
+        "span",
+        [cls<M>("ou-toggle-track"), attr<M>("aria-hidden", "true")],
+        [el<M>("span", [cls<M>("ou-toggle-knob")], [])],
+      ),
+      text<M>(label),
+    ],
+  );
+}
+
+// Dialog(title, body, footer, onClose) -- a modal dialog over a dimmed page. Clicking outside it, its close button or the Escape key
+// (see orin-ui-kit.js) sends `onClose`. The dialog has `role="dialog"`, `aria-modal` and a label.
+export function Dialog<M>(title: string, body: Node<M>[], footer: Node<M>[], onClose: M): Node<M> {
+  return el<M>(
+    "div",
+    [cls<M>("ou-overlay")],
+    [
+      el<M>(
+        "button",
+        [
+          cls<M>("ou-overlay-dismiss"),
+          attr<M>("type", "button"),
+          attr<M>("aria-label", "Close dialog"),
+          attr<M>("data-ou-dismiss", "1"),
+          attr<M>("tabindex", "-1"),
+          onClick<M>(onClose),
+        ],
+        [],
+      ),
+      el<M>(
+        "div",
+        [
+          cls<M>("ou-dialog"),
+          attr<M>("role", "dialog"),
+          attr<M>("aria-modal", "true"),
+          attr<M>("aria-label", title),
+        ],
+        [
+          el<M>(
+            "div",
+            [cls<M>("ou-dialog-header")],
+            [
+              el<M>("h2", [cls<M>("ou-dialog-title")], [text<M>(title)]),
+              el<M>(
+                "button",
+                [
+                  cls<M>("ou-icon-btn"),
+                  attr<M>("type", "button"),
+                  attr<M>("aria-label", "Close"),
+                  onClick<M>(onClose),
+                ],
+                [Icon<M>("x")],
+              ),
+            ],
+          ),
+          el<M>("div", [cls<M>("ou-dialog-body")], body),
+          footer.length > 0 ? el<M>("div", [cls<M>("ou-dialog-footer")], footer) : nothing<M>(),
+        ],
+      ),
+    ],
+  );
+}
+
+// ConfirmDialog(title, message, confirmLabel, danger, onConfirm, onCancel) -- a dialog that asks before something is done.
+export function ConfirmDialog<M>(
+  title: string,
+  message: Node<M>[],
+  confirmLabel: string,
+  danger: bool,
+  onConfirm: M,
+  onCancel: M,
+): Node<M> {
+  return Dialog<M>(
+    title,
+    message,
+    [
+      Button<M>("Cancel", ButtonSecondary, onCancel),
+      Button<M>(confirmLabel, danger ? ButtonDanger : ButtonPrimary, onConfirm),
+    ],
+    onCancel,
+  );
+}
+
+// ThemeToggle() -- a button that cycles light, dark and system (the behaviour is in orin-ui-kit.js, which looks for the
+// `data-ou-theme-toggle` attribute; the stylesheet shows the sun or the moon). It sends no message.
+export function ThemeToggle<M>(): Node<M> {
+  return el<M>(
+    "button",
+    [
+      cls<M>("ou-theme-toggle"),
+      attr<M>("type", "button"),
+      attr<M>("data-ou-theme-toggle", "1"),
+      attr<M>("aria-label", "Change theme"),
+      attr<M>("title", "Theme"),
+    ],
+    [
+      el<M>("span", [cls<M>("ou-icon-sun")], [Icon<M>("sun")]),
+      el<M>("span", [cls<M>("ou-icon-moon")], [Icon<M>("moon")]),
+    ],
+  );
+}

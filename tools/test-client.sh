@@ -6,3 +6,4 @@ cd "$(dirname "$0")/.."
 ORIN="${ORIN:-orin}"
 (cd tools/fixtures && "$ORIN" fetch >/dev/null && "$ORIN" run 2>/dev/null | grep '^{' > ../../client/test/fixtures.jsonl)
 node client/test/client.test.js
+node client/test/kit.test.js

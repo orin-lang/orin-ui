@@ -27,3 +27,32 @@ export {
 } from "./runtime";
 export { renderText, patchText, patchesText } from "./render_text";
 export { Renderer, HtmlRenderer, PatchStreamRenderer, TextRenderer } from "./renderer";
+
+// The component kit: layout, data display, inputs and SVG charts. Styles: client/orin-ui-kit.css, behaviour: client/orin-ui-kit.js.
+export {
+  Tone, ToneNeutral, ToneSuccess, ToneDanger, ToneWarning, ToneInfo, ToneAccent, ButtonKind,
+  ButtonPrimary, ButtonSecondary, ButtonDanger, ButtonGhost, toneClass, buttonClass, paletteSize,
+  paletteSlot, statusTone,
+} from "./kit/theme";
+export { iconPath, Icon } from "./kit/icons";
+export {
+  Scale, scaleTo, tenths, niceStep, niceTicks, compactNumber, percent, maxOf, sumOf,
+} from "./kit/scale";
+export {
+  NavItem, NavSection, Crumb, AppShell, Sidebar, TopBar, PageHeader, Card, FlushCard, Grid, Stack,
+  Inline, EmptyState, Loading,
+} from "./kit/layout";
+export {
+  Badge, StatusPill, Pair, pair, textPair, KeyValue, KeyValueGroup, CodeBlock, Mono, JsonBlock,
+  JsonText, Banner, Toast, Column, column, numberColumn, sortableColumn, TableRow, tableRow,
+  SortState, unsorted, Table, Tab, linkTab, buttonTab, Tabs,
+} from "./kit/display";
+export {
+  Button, SmallButton, IconButton, IconLabelButton, SubmitButton, DisabledButton, LinkButton, Form,
+  InlineForm, TextField, TextArea, Choice, choice, SelectField, Toggle, Dialog, ConfirmDialog,
+  ThemeToggle,
+} from "./kit/inputs";
+export {
+  ChartSeries, series, ChartSpec, Plot, plotOf, pointX, chartDescription, Legend, LineChart,
+  AreaChart, BarChart, Sparkline, StatCard, LatencyBar,
+} from "./kit/charts";

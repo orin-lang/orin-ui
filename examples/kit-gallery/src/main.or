@@ -1,0 +1,470 @@
+// Every component of the orin-ui kit on one HTML page, with sample data. Run it and save the output next to the stylesheet:
+//
+//   orin run > index.html        (tools/gallery.sh does this and copies client/orin-ui-kit.css and .js beside it)
+//
+// The page has no server and no program: the components are rendered with `renderHtml`, so the buttons do nothing.
+import {
+  ValueObject, ValueArray, ValueString, ValueBool, ValueNull, ValueNumber, JsonMember,
+} from "std:json";
+import { numberFromInt } from "std:json/number";
+import { Node, resolve, toDom, renderHtml, div, h2, p, text, cls } from "orin-ui";
+import {
+  ToneSuccess, ToneDanger, ToneWarning, ToneInfo, ToneNeutral, ToneAccent, ButtonPrimary,
+  ButtonSecondary, ButtonDanger, ButtonGhost, Badge, StatusPill, KeyValueGroup, textPair, pair,
+  CodeBlock, JsonBlock, Banner, Toast, Table, column, numberColumn, sortableColumn, tableRow,
+  SortState, linkTab, Tabs, Button, SmallButton, IconButton, IconLabelButton, LinkButton, Form,
+  TextField, SelectField, choice, Toggle, ConfirmDialog, ThemeToggle, AppShell, Sidebar, TopBar,
+  PageHeader, Card, FlushCard, Grid, Stack, Inline, EmptyState, Loading, NavItem, NavSection, Crumb,
+  ChartSpec, series, LineChart, AreaChart, BarChart, Sparkline, StatCard, LatencyBar, Icon,
+  iconPath, compactNumber,
+} from "orin-ui";
+
+type Msg = Noop | Spare;
+
+function fmt(v: int): string {
+  return compactNumber(v);
+}
+
+function ms(us: int): string {
+  return us < 1000
+      ? us.toString() + " us"
+      : (us / 1000).toString() + "." + (us % 1000 / 100).toString() + " ms";
+}
+
+function hours(): string[] {
+  let out: string[] = [];
+  let h: int = 0;
+  while (h < 24) {
+    out.push((h < 10 ? "0" : "") + h.toString() + ":00");
+    h += 1;
+  }
+  return out;
+}
+
+function everyFourth(xs: string[]): string[] {
+  let out: string[] = [];
+  let i: usize = 0;
+  while (i < xs.length) {
+    out.push(i % 4 == 0 ? xs[i] : "");
+    i += 1;
+  }
+  return out;
+}
+
+function succeeded(): int[] {
+  return [4, 6, 5, 9, 12, 14, 11, 8, 15, 18, 21, 19, 17, 22, 25, 20, 18, 16, 14, 12, 9, 7, 6, 5];
+}
+
+function failed(): int[] {
+  return [0, 1, 0, 0, 2, 1, 0, 0, 1, 3, 2, 0, 1, 0, 4, 2, 1, 0, 0, 1, 0, 0, 1, 0];
+}
+
+function section(title: string, body: Node<Msg>[]): Node<Msg> {
+  return Card<Msg>(title, [], body);
+}
+
+function chartSpec(title: string, values: int[]): ChartSpec {
+  return ChartSpec {
+    title: title,
+    labels: hours(),
+    ticks: everyFourth(hours()),
+    series: [series("succeeded", 0, values), series("failed", 1, failed())],
+    height: 220,
+    yFormat: fmt,
+    yMax: 0,
+    unit: "runs",
+    empty: "No runs in this period",
+  };
+}
+
+function gallery(): Node<Msg> {
+  const sidebar = Sidebar<Msg>(
+    div<Msg>([], [text<Msg>("Orbit Cloud")]),
+    [
+      NavSection {
+        title: "Platform",
+        items: [
+          NavItem { label: "Overview", href: "#", icon: "overview", active: true, badge: "" },
+          NavItem { label: "Apps", href: "#", icon: "apps", active: false, badge: "12" },
+          NavItem { label: "Runs", href: "#", icon: "runs", active: false, badge: "" },
+        ],
+      },
+      NavSection {
+        title: "Data",
+        items: [
+          NavItem { label: "Logs", href: "#", icon: "logs", active: false, badge: "" },
+          NavItem { label: "Queues", href: "#", icon: "queues", active: false, badge: "3" },
+        ],
+      },
+    ],
+    text<Msg>("v0.1"),
+  );
+  const top = TopBar<Msg>([Badge<Msg>("node-1", ToneSuccess)], [ThemeToggle<Msg>()]);
+  const cols = [
+    sortableColumn("name", "Name"),
+    column("kind", "Kind"),
+    numberColumn("runs", "Runs"),
+    column("status", "Status"),
+  ];
+  const rows = [
+    tableRow<Msg>(
+      "a",
+      [text<Msg>("billing"), text<Msg>("job"), text<Msg>("1,204"), StatusPill<Msg>("succeeded")],
+    ),
+    tableRow<Msg>(
+      "b",
+      [text<Msg>("mailer"), text<Msg>("consumer"), text<Msg>("88"), StatusPill<Msg>("failed")],
+    ),
+    tableRow<Msg>(
+      "c",
+      [text<Msg>("hub"), text<Msg>("service"), text<Msg>("1"), StatusPill<Msg>("running")],
+    ),
+  ];
+  const json = ValueObject([
+    JsonMember { key: "kind", value: ValueString("consumer") },
+    JsonMember { key: "queue", value: ValueString("orders") },
+    JsonMember { key: "max_attempts", value: ValueNumber(numberFromInt(3)) },
+    JsonMember { key: "kv_namespaces", value: ValueArray([ValueString("seen")]) },
+    JsonMember { key: "clock", value: ValueNull },
+    JsonMember { key: "files", value: ValueBool(false) },
+  ]);
+  const body = Stack<Msg>([
+    PageHeader<Msg>(
+      "Component gallery",
+      "Every component of the orin-ui kit, with sample data.",
+      [Crumb { label: "Kit", href: "#" }, Crumb { label: "Gallery", href: "" }],
+      [Button<Msg>("Primary action", ButtonPrimary, Noop)],
+    ),
+    Grid<Msg>(
+      4,
+      [
+        StatCard<Msg>(
+          "Runs, last 24 h",
+          "1,284",
+          "+12%",
+          ToneSuccess,
+          succeeded(),
+          "vs. yesterday",
+        ),
+        StatCard<Msg>("Error rate", "3.1%", "+0.4 pt", ToneDanger, failed(), ""),
+        StatCard<Msg>("p95 run time", "4.2 ms", "-8%", ToneSuccess, [5, 4, 6, 3, 4, 4], ""),
+        StatCard<Msg>("Dead letters", "0", "", ToneNeutral, [], "all queues healthy"),
+      ],
+    ),
+    Grid<Msg>(
+      2,
+      [
+        Card<Msg>(
+          "Runs per hour (stacked bars)",
+          [Badge<Msg>("24 h", ToneNeutral)],
+          [BarChart<Msg>(chartSpec("Runs per hour", succeeded()))],
+        ),
+        Card<Msg>(
+          "Runs per hour (area)",
+          [],
+          [AreaChart<Msg>(chartSpec("Runs per hour, area", succeeded()))],
+        ),
+        Card<Msg>(
+          "Run time, p50 and p95",
+          [],
+          [
+            LineChart<Msg>(
+              ChartSpec {
+                title: "Run time",
+                labels: hours(),
+                ticks: everyFourth(hours()),
+                series: [
+                  series(
+                    "p50",
+                    0,
+                    [
+                      800,
+                      900,
+                      850,
+                      1200,
+                      950,
+                      1000,
+                      870,
+                      910,
+                      1100,
+                      990,
+                      940,
+                      880,
+                      860,
+                      900,
+                      1300,
+                      1250,
+                      970,
+                      910,
+                      880,
+                      860,
+                      840,
+                      900,
+                      870,
+                      850,
+                    ],
+                  ),
+                  series(
+                    "p95",
+                    3,
+                    [
+                      2100,
+                      2400,
+                      2200,
+                      3900,
+                      2600,
+                      2700,
+                      2300,
+                      2500,
+                      3100,
+                      2800,
+                      2600,
+                      2300,
+                      2200,
+                      2400,
+                      4200,
+                      4000,
+                      2700,
+                      2500,
+                      2300,
+                      2200,
+                      2100,
+                      2400,
+                      2300,
+                      2200,
+                    ],
+                  ),
+                ],
+                height: 220,
+                yFormat: ms,
+                yMax: 0,
+                unit: "",
+                empty: "",
+              },
+              false,
+            ),
+          ],
+        ),
+        Card<Msg>(
+          "Empty, one point, and a sparkline row",
+          [],
+          [
+            Stack<Msg>([
+              Grid<Msg>(
+                2,
+                [
+                  LineChart<Msg>(
+                    ChartSpec {
+                      title: "Empty",
+                      labels: [],
+                      ticks: [],
+                      series: [series("runs", 0, [])],
+                      height: 140,
+                      yFormat: fmt,
+                      yMax: 0,
+                      unit: "runs",
+                      empty: "No runs in this period",
+                    },
+                    true,
+                  ),
+                  LineChart<Msg>(
+                    ChartSpec {
+                      title: "One point",
+                      labels: ["12:00"],
+                      ticks: ["12:00"],
+                      series: [series("runs", 0, [7])],
+                      height: 140,
+                      yFormat: fmt,
+                      yMax: 0,
+                      unit: "runs",
+                      empty: "",
+                    },
+                    true,
+                  ),
+                ],
+              ),
+              Inline<Msg>([
+                Sparkline<Msg>(succeeded(), 120, 32, 0, "succeeded"),
+                Sparkline<Msg>(failed(), 120, 32, 1, "failed"),
+                Sparkline<Msg>([], 120, 32, 0, "none"),
+                Sparkline<Msg>([3], 120, 32, 2, "one"),
+              ]),
+              Inline<Msg>([
+                LatencyBar<Msg>(900, 2200, 4200, "0.9 ms", "2.2 ms"),
+                LatencyBar<Msg>(3000, 4200, 4200, "3.0 ms", "4.2 ms"),
+              ]),
+            ]),
+          ],
+        ),
+      ],
+    ),
+    Grid<Msg>(
+      2,
+      [
+        FlushCard<Msg>(
+          "Table",
+          [SmallButton<Msg>("Export", ButtonSecondary, Noop)],
+          [
+            Table<Msg>(
+              cols,
+              rows,
+              SortState { key: "runs", desc: true },
+              k => Noop,
+              EmptyState<Msg>("apps", "No apps", "", []),
+            ),
+          ],
+        ),
+        Card<Msg>(
+          "Key/value and JSON",
+          [],
+          [
+            KeyValueGroup<Msg>(
+              "Limits",
+              [
+                textPair<Msg>("Memory", "64 MiB"),
+                textPair<Msg>("Timeout", "60 s"),
+                pair<Msg>("Restart", Badge<Msg>("always", ToneInfo)),
+              ],
+            ),
+            JsonBlock<Msg>(json),
+          ],
+        ),
+      ],
+    ),
+    Grid<Msg>(
+      3,
+      [
+        Card<Msg>(
+          "Badges and pills",
+          [],
+          [
+            Inline<Msg>([
+              Badge<Msg>("neutral", ToneNeutral),
+              Badge<Msg>("accent", ToneAccent),
+              Badge<Msg>("success", ToneSuccess),
+              Badge<Msg>("warning", ToneWarning),
+              Badge<Msg>("danger", ToneDanger),
+              Badge<Msg>("info", ToneInfo),
+            ]),
+            Inline<Msg>([
+              StatusPill<Msg>("succeeded"),
+              StatusPill<Msg>("failed"),
+              StatusPill<Msg>("running"),
+              StatusPill<Msg>("stopped"),
+            ]),
+          ],
+        ),
+        Card<Msg>(
+          "Buttons",
+          [],
+          [
+            Inline<Msg>([
+              Button<Msg>("Primary", ButtonPrimary, Noop),
+              Button<Msg>("Secondary", ButtonSecondary, Noop),
+              Button<Msg>("Danger", ButtonDanger, Noop),
+              Button<Msg>("Ghost", ButtonGhost, Noop),
+            ]),
+            Inline<Msg>([
+              IconLabelButton<Msg>("play", "Run now", ButtonPrimary, Noop),
+              IconButton<Msg>("refresh", "Refresh", ButtonSecondary, Noop),
+              LinkButton<Msg>("A link", ButtonSecondary, "#"),
+            ]),
+          ],
+        ),
+        Card<Msg>(
+          "Inputs",
+          [],
+          [
+            Form<Msg>(
+              v => Noop,
+              [
+                TextField<Msg>("q", "Queue", "orders", "a-z, 0-9 and -", "name"),
+                SelectField<Msg>(
+                  "l",
+                  "Level",
+                  [choice("", "any level"), choice("warn", "warn")],
+                  "warn",
+                ),
+                Toggle<Msg>("Follow", true, Noop),
+              ],
+            ),
+          ],
+        ),
+      ],
+    ),
+    Tabs<Msg>([
+      linkTab<Msg>("Overview", "#", true, ""),
+      linkTab<Msg>("Deployments", "#", false, "3"),
+      linkTab<Msg>("Runs", "#", false, "128"),
+      linkTab<Msg>("Settings", "#", false, ""),
+    ]),
+    Banner<Msg>(
+      ToneWarning,
+      "Heads up",
+      "The queue orders has 2 dead letters.",
+      [SmallButton<Msg>("View", ButtonSecondary, Noop)],
+    ),
+    Banner<Msg>(ToneDanger, "Run failed", "exited with status 3", []),
+    Banner<Msg>(ToneSuccess, "Deployed", "Version 4 is active.", []),
+    Grid<Msg>(
+      2,
+      [
+        Card<Msg>(
+          "Empty state",
+          [],
+          [
+            EmptyState<Msg>(
+              "queues",
+              "No queues yet",
+              "Queues exist when the first message arrives.",
+              [Button<Msg>("Publish a message", ButtonPrimary, Noop)],
+            ),
+          ],
+        ),
+        Card<Msg>(
+          "Loading and icons",
+          [],
+          [
+            Loading<Msg>("Loading runs..."),
+            Inline<Msg>(
+              [
+                "overview",
+                "apps",
+                "runs",
+                "logs",
+                "queues",
+                "kv",
+                "settings",
+                "search",
+                "refresh",
+                "trash",
+                "play",
+                "user",
+              ].map(
+                n => Icon<Msg>(n),
+              ),
+            ),
+          ],
+        ),
+      ],
+    ),
+    ConfirmDialog<Msg>(
+      "Delete hello?",
+      [p<Msg>([], [text<Msg>("This deletes the app with its runs, logs and data.")])],
+      "Delete app",
+      true,
+      Noop,
+      Noop,
+    ),
+    Toast<Msg>(ToneSuccess, "Run succeeded", "#", Noop),
+  ]);
+  return div<Msg>([cls<Msg>("ou-static")], [AppShell<Msg>(sidebar, top, body)]);
+}
+
+function main(): void {
+  const markup = renderHtml(toDom<Msg>(resolve<Msg>(gallery())));
+  console.log(
+    "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>orin-ui kit gallery</title><link rel=\"stylesheet\" href=\"orin-ui-kit.css\"><script src=\"orin-ui-kit.js\"></script></head><body>"
+        + markup + "</body></html>",
+  );
+}
