@@ -8,7 +8,9 @@
 //   * splits an element's attributes into plain attributes, the key and the event bindings;
 //   * for a duplicate attribute or event the last one wins.
 import { DomAttr, Dom, DElement, DText, EVENTS_ATTR } from "./dom";
-import { Attr, Node, Prop, Key, On, OnValue, NoAttr, Element, Text, Fragment, Component } from "./node";
+import {
+  Attr, Node, Prop, Key, On, OnValue, NoAttr, Element, Text, Fragment, Component,
+} from "./node";
 import { isValidTag, isForbiddenTag, isAllowedAttr, safeAttrValue, asciiLower } from "./safe";
 
 // What an event produces: a fixed message, or one computed from the event's text payload.
@@ -35,7 +37,9 @@ export function resolve<M>(node: Node<M>): VNode<M>[] {
 export function resolveAll<M>(nodes: Node<M>[]): VNode<M>[] {
   let out: VNode<M>[] = [];
   for (const n of nodes) {
-    out = out.concat(flatten<M>(n));
+    for (const v of flatten<M>(n)) {
+      out.push(v);
+    }
   }
   return mergeText<M>(out);
 }
@@ -107,19 +111,29 @@ function elementNode<M>(tag: string, attrs: Attr<M>[], children: Node<M>[]): VNo
           plain = setAttr(plain, n, safeAttrValue(n, v));
         }
       },
-      Key(k) => { key = Some(k); },
-      On(ev, m) => { events = setBinding<M>(events, ev, Fixed<M>(m)); },
-      OnValue(ev, f) => { events = setBinding<M>(events, ev, FromValue<M>(f)); },
+      Key(k) => {
+        key = Some(k);
+      },
+      On(ev, m) => {
+        events = setBinding<M>(events, ev, Fixed<M>(m));
+      },
+      OnValue(ev, f) => {
+        events = setBinding<M>(events, ev, FromValue<M>(f));
+      },
       NoAttr => {},
     }
   }
-  return [VElement<M>(VElem<M> {
-    tag: tag,
-    key: key,
-    attrs: plain,
-    events: events,
-    children: resolveAll<M>(children),
-  })];
+  return [
+    VElement<M>(
+      VElem<M> {
+        tag: tag,
+        key: key,
+        attrs: plain,
+        events: events,
+        children: resolveAll<M>(children),
+      },
+    ),
+  ];
 }
 
 function setAttr(attrs: DomAttr[], name: string, value: string): DomAttr[] {
@@ -146,7 +160,7 @@ function isEventName(e: string): bool {
   let i: usize = 0;
   while (i < e.length) {
     const c = e.charCodeAt(i);
-    const ok = (c >= 97 && c <= 122) || (c >= 65 && c <= 90) || (c >= 48 && c <= 57);
+    const ok = c >= 97 && c <= 122 || c >= 65 && c <= 90 || c >= 48 && c <= 57;
     if (!ok) {
       return false;
     }
@@ -181,7 +195,12 @@ export function toDom<M>(nodes: VNode<M>[]): Dom[] {
 function domNode<M>(n: VNode<M>): Dom {
   return match (n) {
     VText(s) => DText(s),
-    VElement(e) => DElement(e.tag, e.key, withEvents<M>(e.attrs, e.events), e.children.map(c => domNode<M>(c))),
+    VElement(e) => DElement(
+      e.tag,
+      e.key,
+      withEvents<M>(e.attrs, e.events),
+      e.children.map(c => domNode<M>(c)),
+    ),
   };
 }
 
@@ -189,7 +208,9 @@ function withEvents<M>(attrs: DomAttr[], events: Binding<M>[]): DomAttr[] {
   if (events.length == 0) {
     return attrs;
   }
-  const names = events.map(b => b.event).sort((a: string, b: string): int => a < b ? -1 : (a > b ? 1 : 0));
+  const names = events
+      .map(b => b.event)
+      .sort((a: string, b: string): int => a < b ? -1 : a > b ? 1 : 0);
   return attrs.concat([DomAttr { name: EVENTS_ATTR, value: names.join(" ") }]);
 }
 
@@ -208,7 +229,9 @@ export function handlerAt<M>(nodes: VNode<M>[], path: int[], event: string): Opt
       return None;
     }
     match (level[idx.toUsize()]) {
-      VText(s) => { return None; },
+      VText(s) => {
+        return None;
+      },
       VElement(e) => {
         if (i + 1 == path.length) {
           const want = asciiLower(event);
@@ -228,7 +251,12 @@ export function handlerAt<M>(nodes: VNode<M>[], path: int[], event: string): Opt
 }
 
 // messageAt(nodes, path, event, payload) -- the message the element at `path` produces for `event`, if it handles it.
-export function messageAt<M>(nodes: VNode<M>[], path: int[], event: string, payload: string): Option<M> {
+export function messageAt<M>(
+  nodes: VNode<M>[],
+  path: int[],
+  event: string,
+  payload: string,
+): Option<M> {
   return match (handlerAt<M>(nodes, path, event)) {
     Some(h) => match (h) {
       Fixed(m) => Some(m),

@@ -10,8 +10,12 @@ export function apply(roots: Dom[], patches: Patch[]): Result<Dom[], string> {
   let n = 0;
   for (const p of patches) {
     match (applyOne(tree, p)) {
-      Ok(t) => { tree = t; },
-      Err(e) => { return Err("patch " + n.toString() + ": " + e); },
+      Ok(t) => {
+        tree = t;
+      },
+      Err(e) => {
+        return Err("patch " + n.toString() + ": " + e);
+      },
     }
     n += 1;
   }
@@ -23,9 +27,21 @@ function applyOne(roots: Dom[], p: Patch): Result<Dom[], string> {
     Create(path, node) => insertChild(roots, path, node),
     Remove(path) => removeChild(roots, path),
     Replace(path, node) => editNode(roots, path, (old: Dom): Result<Dom[], string> => Ok([node])),
-    SetAttr(path, name, value) => editNode(roots, path, (old: Dom): Result<Dom[], string> => setAttribute(old, name, value)),
-    RemoveAttr(path, name) => editNode(roots, path, (old: Dom): Result<Dom[], string> => removeAttribute(old, name)),
-    SetText(path, text) => editNode(roots, path, (old: Dom): Result<Dom[], string> => setTextOf(old, text)),
+    SetAttr(path, name, value) => editNode(
+      roots,
+      path,
+      (old: Dom): Result<Dom[], string> => setAttribute(old, name, value),
+    ),
+    RemoveAttr(path, name) => editNode(
+      roots,
+      path,
+      (old: Dom): Result<Dom[], string> => removeAttribute(old, name),
+    ),
+    SetText(path, text) => editNode(
+      roots,
+      path,
+      (old: Dom): Result<Dom[], string> => setTextOf(old, text),
+    ),
     Move(parent, fromIdx, to) => moveChild(roots, parent, fromIdx, to),
   };
 }
@@ -69,7 +85,11 @@ function setTextOf(old: Dom, text: string): Result<Dom[], string> {
 }
 
 // Run `edit` on the node at `path`; the nodes it returns replace it.
-function editNode(roots: Dom[], path: int[], edit: (old: Dom) => Result<Dom[], string>): Result<Dom[], string> {
+function editNode(
+  roots: Dom[],
+  path: int[],
+  edit: (old: Dom) => Result<Dom[], string>,
+): Result<Dom[], string> {
   if (path.length == 0) {
     return Err("empty path");
   }
@@ -89,23 +109,48 @@ function editNode(roots: Dom[], path: int[], edit: (old: Dom) => Result<Dom[], s
   };
 }
 
-function withChildren(roots: Dom[], i: usize, t: string, k: Option<string>, attrs: DomAttr[], cs: Result<Dom[], string>): Result<Dom[], string> {
+function withChildren(
+  roots: Dom[],
+  i: usize,
+  t: string,
+  k: Option<string>,
+  attrs: DomAttr[],
+  cs: Result<Dom[], string>,
+): Result<Dom[], string> {
   const children = cs?;
-  return Ok(roots.slice(0, i).concat([DElement(t, k, attrs, children)]).concat(roots.slice(i + 1, roots.length)));
+  return Ok(
+    roots
+        .slice(0, i)
+        .concat([DElement(t, k, attrs, children)])
+        .concat(roots.slice(i + 1, roots.length)),
+  );
 }
 
 // Apply `f` to the child list of the node at `parent` (the root list when `parent` is empty).
-function editChildren(roots: Dom[], parent: int[], f: (children: Dom[]) => Result<Dom[], string>): Result<Dom[], string> {
+function editChildren(
+  roots: Dom[],
+  parent: int[],
+  f: (children: Dom[]) => Result<Dom[], string>,
+): Result<Dom[], string> {
   if (parent.length == 0) {
     return f(roots);
   }
-  return editNode(roots, parent, (old: Dom): Result<Dom[], string> => match (old) {
-    DText(s) => Err("path goes through a text node"),
-    DElement(t, k, attrs, cs) => withChildList(t, k, attrs, f(cs)),
-  });
+  return editNode(
+    roots,
+    parent,
+    (old: Dom): Result<Dom[], string> => match (old) {
+      DText(s) => Err("path goes through a text node"),
+      DElement(t, k, attrs, cs) => withChildList(t, k, attrs, f(cs)),
+    },
+  );
 }
 
-function withChildList(t: string, k: Option<string>, attrs: DomAttr[], cs: Result<Dom[], string>): Result<Dom[], string> {
+function withChildList(
+  t: string,
+  k: Option<string>,
+  attrs: DomAttr[],
+  cs: Result<Dom[], string>,
+): Result<Dom[], string> {
   const children = cs?;
   return Ok([DElement(t, k, attrs, children)]);
 }
@@ -116,13 +161,17 @@ function insertChild(roots: Dom[], path: int[], node: Dom): Result<Dom[], string
   }
   const last = path[path.length - 1];
   const parent = path.slice(0, path.length - 1);
-  return editChildren(roots, parent, (cs: Dom[]): Result<Dom[], string> => {
-    if (last < 0 || last > cs.length.toInt()) {
-      return Err("cannot insert at index " + last.toString());
-    }
-    const i = last.toUsize();
-    return Ok(cs.slice(0, i).concat([node]).concat(cs.slice(i, cs.length)));
-  });
+  return editChildren(
+    roots,
+    parent,
+    (cs: Dom[]): Result<Dom[], string> => {
+      if (last < 0 || last > cs.length.toInt()) {
+        return Err("cannot insert at index " + last.toString());
+      }
+      const i = last.toUsize();
+      return Ok(cs.slice(0, i).concat([node]).concat(cs.slice(i, cs.length)));
+    },
+  );
 }
 
 function removeChild(roots: Dom[], path: int[]): Result<Dom[], string> {
@@ -131,24 +180,32 @@ function removeChild(roots: Dom[], path: int[]): Result<Dom[], string> {
   }
   const last = path[path.length - 1];
   const parent = path.slice(0, path.length - 1);
-  return editChildren(roots, parent, (cs: Dom[]): Result<Dom[], string> => {
-    if (last < 0 || last >= cs.length.toInt()) {
-      return Err("no node at index " + last.toString());
-    }
-    const i = last.toUsize();
-    return Ok(cs.slice(0, i).concat(cs.slice(i + 1, cs.length)));
-  });
+  return editChildren(
+    roots,
+    parent,
+    (cs: Dom[]): Result<Dom[], string> => {
+      if (last < 0 || last >= cs.length.toInt()) {
+        return Err("no node at index " + last.toString());
+      }
+      const i = last.toUsize();
+      return Ok(cs.slice(0, i).concat(cs.slice(i + 1, cs.length)));
+    },
+  );
 }
 
 function moveChild(roots: Dom[], parent: int[], fromIdx: int, to: int): Result<Dom[], string> {
-  return editChildren(roots, parent, (cs: Dom[]): Result<Dom[], string> => {
-    if (fromIdx < 0 || fromIdx >= cs.length.toInt() || to < 0 || to >= cs.length.toInt()) {
-      return Err("move out of range");
-    }
-    const f = fromIdx.toUsize();
-    const moving = cs[f];
-    const rest = cs.slice(0, f).concat(cs.slice(f + 1, cs.length));
-    const t = to.toUsize();
-    return Ok(rest.slice(0, t).concat([moving]).concat(rest.slice(t, rest.length)));
-  });
+  return editChildren(
+    roots,
+    parent,
+    (cs: Dom[]): Result<Dom[], string> => {
+      if (fromIdx < 0 || fromIdx >= cs.length.toInt() || to < 0 || to >= cs.length.toInt()) {
+        return Err("move out of range");
+      }
+      const f = fromIdx.toUsize();
+      const moving = cs[f];
+      const rest = cs.slice(0, f).concat(cs.slice(f + 1, cs.length));
+      const t = to.toUsize();
+      return Ok(rest.slice(0, t).concat([moving]).concat(rest.slice(t, rest.length)));
+    },
+  );
 }

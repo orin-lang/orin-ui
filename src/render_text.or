@@ -78,7 +78,8 @@ export function patchText(p: Patch): string {
     SetAttr(path, name, value) => "attr " + pathText(path) + " " + name + "=" + quote(value),
     RemoveAttr(path, name) => "unattr " + pathText(path) + " " + name,
     SetText(path, text) => "text " + pathText(path) + " " + quote(text),
-    Move(parent, fromIdx, to) => "move " + pathText(parent) + " " + fromIdx.toString() + " -> " + to.toString(),
+    Move(parent, fromIdx, to) => "move " + pathText(parent) + " " + fromIdx.toString() + " -> "
+        + to.toString(),
   };
 }
 

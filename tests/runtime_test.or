@@ -1,9 +1,9 @@
 import { assertEqString, assertEqual, assert, assertEq } from "std:test";
 import {
-  Node, Program, Session, el, text, div, button, input, onClick, onInput, cls, attr, key, value, when, mapMsg,
-  resolve, toDom, messageAt, start, send, sendAll, handleEvent, respond, mountReply, sessionOf,
-  renderHtml, renderText, patchesText, ClientEvent, SetText, Remove, Create, dText, dElement,
-  HtmlRenderer, PatchStreamRenderer, TextRenderer, Renderer
+  Node, Program, Session, el, text, div, button, input, onClick, onInput, cls, attr, key, value,
+  when, mapMsg, resolve, toDom, messageAt, start, send, sendAll, handleEvent, respond, mountReply,
+  sessionOf, renderHtml, renderText, patchesText, ClientEvent, SetText, Remove, Create, dText,
+  dElement, HtmlRenderer, PatchStreamRenderer, TextRenderer, Renderer,
 } from "../src";
 
 type Model = { count: int; note: string; };
@@ -19,13 +19,16 @@ function update(m: Model, msg: Msg): Model {
 }
 
 function view(m: Model): Node<Msg> {
-  return div([cls("counter")], [
-    button([onClick(Decrement)], [text("-")]),
-    el("span", [cls("value")], [text(m.count.toString())]),
-    button([onClick(Increment)], [text("+")]),
-    input([attr("type", "text"), value(m.note), onInput((v: string): Msg => SetNote(v))]),
-    when(m.count > 2, el("b", [], [text("big")])),
-  ]);
+  return div(
+    [cls("counter")],
+    [
+      button([onClick(Decrement)], [text("-")]),
+      el("span", [cls("value")], [text(m.count.toString())]),
+      button([onClick(Increment)], [text("+")]),
+      input([attr("type", "text"), value(m.note), onInput(v => SetNote(v))]),
+      when(m.count > 2, el("b", [], [text("big")])),
+    ],
+  );
 }
 
 function program(): Program<Model, Msg> {
@@ -35,7 +38,11 @@ function program(): Program<Model, Msg> {
 @Test
 function startRendersTheInitialModel(): void {
   const s = start(program());
-  assertEqString(renderHtml(s.dom), "<div class=\"counter\"><button data-ou-on=\"click\">-</button><span class=\"value\">0</span><button data-ou-on=\"click\">+</button><input type=\"text\" value=\"\" data-ou-on=\"input\"></div>", "html");
+  assertEqString(
+    renderHtml(s.dom),
+    "<div class=\"counter\"><button data-ou-on=\"click\">-</button><span class=\"value\">0</span><button data-ou-on=\"click\">+</button><input type=\"text\" value=\"\" data-ou-on=\"input\"></div>",
+    "html",
+  );
 }
 
 @Test
@@ -47,7 +54,6 @@ function sendProducesTheMinimalPatch(): void {
   assert(step.handled, "handled");
 }
 
-
 @Test
 function conditionalChildrenAreCreatedAndRemoved(): void {
   const p = program();
@@ -55,11 +61,14 @@ function conditionalChildrenAreCreatedAndRemoved(): void {
   s = send(p, s, Increment).session;
   s = send(p, s, Increment).session;
   const up = send(p, s, Increment);
-  assertEqual(up.patches, [Create([0, 4], dElement("b", [], [dText("big")])), SetText([0, 1, 0], "3")], "create the conditional child, then update the number");
+  assertEqual(
+    up.patches,
+    [Create([0, 4], dElement("b", [], [dText("big")])), SetText([0, 1, 0], "3")],
+    "create the conditional child, then update the number",
+  );
   const down = send(p, up.session, Reset);
   assertEqual(down.patches, [Remove([0, 4]), SetText([0, 1, 0], "0")], "remove it again");
 }
-
 
 @Test
 function eventsRouteBackToTypedMessages(): void {
@@ -84,11 +93,26 @@ function unroutableEventsAreIgnored(): void {
   const wrongEvent = handleEvent(p, s, ClientEvent { path: [0, 2], event: "dblclick", value: "" });
   assert(!wrongEvent.handled, "event the element does not handle");
   assertEq(wrongEvent.patches.length.toInt(), 0, "no patches");
-  assert(!handleEvent(p, s, ClientEvent { path: [0, 1], event: "click", value: "" }).handled, "element without handlers");
-  assert(!handleEvent(p, s, ClientEvent { path: [0, 1, 0], event: "click", value: "" }).handled, "text node");
-  assert(!handleEvent(p, s, ClientEvent { path: [9], event: "click", value: "" }).handled, "no such node");
-  assert(!handleEvent(p, s, ClientEvent { path: [], event: "click", value: "" }).handled, "empty path");
-  assert(!handleEvent(p, s, ClientEvent { path: [-1], event: "click", value: "" }).handled, "negative index");
+  assert(
+    !handleEvent(p, s, ClientEvent { path: [0, 1], event: "click", value: "" }).handled,
+    "element without handlers",
+  );
+  assert(
+    !handleEvent(p, s, ClientEvent { path: [0, 1, 0], event: "click", value: "" }).handled,
+    "text node",
+  );
+  assert(
+    !handleEvent(p, s, ClientEvent { path: [9], event: "click", value: "" }).handled,
+    "no such node",
+  );
+  assert(
+    !handleEvent(p, s, ClientEvent { path: [], event: "click", value: "" }).handled,
+    "empty path",
+  );
+  assert(
+    !handleEvent(p, s, ClientEvent { path: [-1], event: "click", value: "" }).handled,
+    "negative index",
+  );
 }
 
 @Test
@@ -96,7 +120,11 @@ function sendAllAppliesMessagesInOrder(): void {
   const p = program();
   const step = sendAll(p, start(p), [Increment, Increment, Decrement, Increment]);
   assertEq(step.session.model.count, 2, "count");
-  assertEqual(step.patches, [SetText([0, 1, 0], "2")], "one patch from the first screen to the last");
+  assertEqual(
+    step.patches,
+    [SetText([0, 1, 0], "2")],
+    "one patch from the first screen to the last",
+  );
 }
 
 @Test
@@ -104,7 +132,11 @@ function respondHandlesTheWholeRequest(): void {
   const p = program();
   const s = start(p);
   const r = respond(p, s, "{\"t\":\"event\",\"path\":[0,2],\"event\":\"click\",\"value\":\"\"}");
-  assertEqString(r.body, "{\"t\":\"patch\",\"ops\":[{\"op\":\"text\",\"path\":[0,1,0],\"text\":\"1\"}]}", "patch message");
+  assertEqString(
+    r.body,
+    "{\"t\":\"patch\",\"ops\":[{\"op\":\"text\",\"path\":[0,1,0],\"text\":\"1\"}]}",
+    "patch message",
+  );
   assertEq(r.session.model.count, 1, "new session");
   const j = respond(p, r.session, "{\"t\":\"join\"}");
   assert(j.body.startsWith("{\"t\":\"mount\""), "join gets a mount");
@@ -139,10 +171,13 @@ function childView(n: int): Node<ChildMsg> {
 }
 
 function pairView(m: Pair): Node<ParentMsg> {
-  return div([], [
-    mapMsg(childView(m.left), (c: ChildMsg): ParentMsg => Left(c)),
-    mapMsg(childView(m.right), (c: ChildMsg): ParentMsg => Right(c)),
-  ]);
+  return div(
+    [],
+    [
+      mapMsg(childView(m.left), (c: ChildMsg): ParentMsg => Left(c)),
+      mapMsg(childView(m.right), (c: ChildMsg): ParentMsg => Right(c)),
+    ],
+  );
 }
 
 function pairUpdate(m: Pair, msg: ParentMsg): Pair {
@@ -154,12 +189,20 @@ function pairUpdate(m: Pair, msg: ParentMsg): Pair {
 
 @Test
 function mapMsgEmbedsAChildComponent(): void {
-  const p = Program<Pair, ParentMsg> { init: Pair { left: 0, right: 0 }, update: pairUpdate, view: pairView };
+  const p = Program<Pair, ParentMsg> {
+    init: Pair { left: 0, right: 0 },
+    update: pairUpdate,
+    view: pairView,
+  };
   let s = start(p);
   s = handleEvent(p, s, ClientEvent { path: [0, 0], event: "click", value: "" }).session;
   s = handleEvent(p, s, ClientEvent { path: [0, 1], event: "click", value: "" }).session;
   s = handleEvent(p, s, ClientEvent { path: [0, 1], event: "click", value: "" }).session;
-  assertEqString(renderText(s.dom), "div\n  button [click]\n    \"1\"\n  button [click]\n    \"20\"", "both children updated");
+  assertEqString(
+    renderText(s.dom),
+    "div\n  button [click]\n    \"1\"\n  button [click]\n    \"20\"",
+    "both children updated",
+  );
 }
 
 // ---- keyed lists keep identity
@@ -180,15 +223,27 @@ function itemsUpdate(m: Items, msg: ListMsg): Items {
 
 @Test
 function keyedViewsProduceMoves(): void {
-  const p = Program<Items, ListMsg> { init: Items { ids: ["a", "b", "c", "d"] }, update: itemsUpdate, view: itemsView };
+  const p = Program<Items, ListMsg> {
+    init: Items { ids: ["a", "b", "c", "d"] },
+    update: itemsUpdate,
+    view: itemsView,
+  };
   const s = start(p);
   const rot = send(p, s, Rotate);
   assertEqString(patchesText(rot.patches), "move /0 0 -> 3", "one move");
   const del = send(p, s, Remove2("b"));
   assertEqString(patchesText(del.patches), "remove /0/1", "one removal");
   // routing follows the current positions
-  const after = handleEvent(p, del.session, ClientEvent { path: [0, 1], event: "click", value: "" });
-  assertEqString(renderText(after.session.dom), "ul\n  li [click]\n    \"a\"\n  li [click]\n    \"d\"", "c was at index 1 after b went away");
+  const after = handleEvent(
+    p,
+    del.session,
+    ClientEvent { path: [0, 1], event: "click", value: "" },
+  );
+  assertEqString(
+    renderText(after.session.dom),
+    "ul\n  li [click]\n    \"a\"\n  li [click]\n    \"d\"",
+    "c was at index 1 after b went away",
+  );
 }
 
 // ---- backends behind one interface
@@ -202,12 +257,22 @@ function describe(r: Renderer, roots: Node<Msg>): string {
 function threeBackendsOneInterface(): void {
   const n = el<Msg>("p", [cls("x")], [text("a<b")]);
   assertEqString(describe(new HtmlRenderer(), n), "html: <p class=\"x\">a&lt;b</p>", "html");
-  assertEqString(describe(new PatchStreamRenderer(), n), "patch-stream: {\"t\":\"mount\",\"dom\":[{\"t\":\"p\",\"a\":[[\"class\",\"x\"]],\"c\":[\"a<b\"]}]}".split("<").join("\\u003c"), "patch stream");
+  assertEqString(
+    describe(new PatchStreamRenderer(), n),
+    "patch-stream: {\"t\":\"mount\",\"dom\":[{\"t\":\"p\",\"a\":[[\"class\",\"x\"]],\"c\":[\"a<b\"]}]}"
+        .split("<")
+        .join("\\u003c"),
+    "patch stream",
+  );
   assertEqString(describe(new TextRenderer(), n), "text: p.x\n  \"a<b\"", "text");
   const before = [dText("a")];
   const after = [dText("b")];
   const patches = [SetText([0], "b")];
   assertEqString(new HtmlRenderer().update(before, after, patches), "b", "html update re-renders");
-  assertEqString(new PatchStreamRenderer().update(before, after, patches), "{\"t\":\"patch\",\"ops\":[{\"op\":\"text\",\"path\":[0],\"text\":\"b\"}]}", "patch update");
+  assertEqString(
+    new PatchStreamRenderer().update(before, after, patches),
+    "{\"t\":\"patch\",\"ops\":[{\"op\":\"text\",\"path\":[0],\"text\":\"b\"}]}",
+    "patch update",
+  );
   assertEqString(new TextRenderer().update(before, after, patches), "text /0 \"b\"", "text update");
 }

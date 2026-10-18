@@ -136,7 +136,7 @@ function diffChildren(path: int[], old: Dom[], next: Dom[]): Patch[] {
   }
   let out: Patch[] = [];
   // 1. remove old children that are not continued, last first so the indices stay valid.
-  let cur: int[] = [];   // the old indices still present, in current order
+  let cur: int[] = []; // the old indices still present, in current order
   let r = old.length.toInt() - 1;
   while (r >= 0) {
     if (!used[r.toUsize()]) {

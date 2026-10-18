@@ -24,7 +24,7 @@ export function asciiLower(s: string): string {
 }
 
 function isAlpha(c: int): bool {
-  return (c >= 65 && c <= 90) || (c >= 97 && c <= 122);
+  return c >= 65 && c <= 90 || c >= 97 && c <= 122;
 }
 
 function isDigit(c: int): bool {
@@ -53,7 +53,12 @@ export function isValidTag(t: string): bool {
 // Elements the renderers never produce.
 export function isForbiddenTag(t: string): bool {
   const l = asciiLower(t);
-  return l == "script" || l == "base" || l == "meta" || l == "object" || l == "embed" || l == "applet";
+  return l == "script"
+      || l == "base"
+      || l == "meta"
+      || l == "object"
+      || l == "embed"
+      || l == "applet";
 }
 
 // An attribute name: a letter, `_` or `:`, then letters, digits, `_`, `:`, `.` and `-`; at most 64 bytes.
@@ -91,8 +96,18 @@ export function isAllowedAttr(name: string): bool {
 // Attributes whose value is a URL.
 export function isUrlAttr(name: string): bool {
   const l = asciiLower(name);
-  return l == "href" || l == "src" || l == "action" || l == "formaction" || l == "cite" || l == "poster"
-    || l == "background" || l == "manifest" || l == "ping" || l == "data" || l == "longdesc" || l == "xlink:href";
+  return l == "href"
+      || l == "src"
+      || l == "action"
+      || l == "formaction"
+      || l == "cite"
+      || l == "poster"
+      || l == "background"
+      || l == "manifest"
+      || l == "ping"
+      || l == "data"
+      || l == "longdesc"
+      || l == "xlink:href";
 }
 
 // The value to store for the attribute: URL attributes are sanitised, all others are unchanged.
@@ -105,6 +120,17 @@ export function safeAttrValue(name: string, value: string): string {
 
 export function isVoidTag(t: string): bool {
   const l = asciiLower(t);
-  return l == "area" || l == "base" || l == "br" || l == "col" || l == "embed" || l == "hr" || l == "img"
-    || l == "input" || l == "link" || l == "meta" || l == "source" || l == "track" || l == "wbr";
+  return l == "area"
+      || l == "base"
+      || l == "br"
+      || l == "col"
+      || l == "embed"
+      || l == "hr"
+      || l == "img"
+      || l == "input"
+      || l == "link"
+      || l == "meta"
+      || l == "source"
+      || l == "track"
+      || l == "wbr";
 }

@@ -1,0 +1,50 @@
+// The OX provider for this program. `import ox from "./ui";` in a file makes `<div>` call `div` below.
+//
+// An OX provider must be a module with one non-generic `ox()` function and non-generic element functions, so the message
+// type is fixed here and each program carries a small provider like this one. Copy it and keep the tags you use. Every
+// element has the same shape: optional `attrs` (a list of attributes) and the `children`.
+import { Components } from "std:ox";
+import { Node, Attr, Element, Text, Fragment } from "orin-ui";
+import { Msg } from "./model";
+
+export function ox(): Components<Node<Msg>> {
+  return Components<Node<Msg>> { fragment: group, text: plain };
+}
+
+export function group(items: Node<Msg>[]): Node<Msg> {
+  return Fragment(items);
+}
+export function plain(s: string): Node<Msg> {
+  return Text(s);
+}
+
+export function div(attrs: Option<Attr<Msg>[]>, children: Node<Msg>[]): Node<Msg> {
+  return Element("div", attrs.unwrapOr([]), children);
+}
+export function span(attrs: Option<Attr<Msg>[]>, children: Node<Msg>[]): Node<Msg> {
+  return Element("span", attrs.unwrapOr([]), children);
+}
+export function h1(attrs: Option<Attr<Msg>[]>, children: Node<Msg>[]): Node<Msg> {
+  return Element("h1", attrs.unwrapOr([]), children);
+}
+export function p(attrs: Option<Attr<Msg>[]>, children: Node<Msg>[]): Node<Msg> {
+  return Element("p", attrs.unwrapOr([]), children);
+}
+export function ul(attrs: Option<Attr<Msg>[]>, children: Node<Msg>[]): Node<Msg> {
+  return Element("ul", attrs.unwrapOr([]), children);
+}
+export function li(attrs: Option<Attr<Msg>[]>, children: Node<Msg>[]): Node<Msg> {
+  return Element("li", attrs.unwrapOr([]), children);
+}
+export function form(attrs: Option<Attr<Msg>[]>, children: Node<Msg>[]): Node<Msg> {
+  return Element("form", attrs.unwrapOr([]), children);
+}
+export function label(attrs: Option<Attr<Msg>[]>, children: Node<Msg>[]): Node<Msg> {
+  return Element("label", attrs.unwrapOr([]), children);
+}
+export function button(attrs: Option<Attr<Msg>[]>, children: Node<Msg>[]): Node<Msg> {
+  return Element("button", attrs.unwrapOr([]), children);
+}
+export function input(attrs: Option<Attr<Msg>[]>): Node<Msg> {
+  return Element("input", attrs.unwrapOr([]), []);
+}

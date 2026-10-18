@@ -234,6 +234,7 @@
     var queue = [];
     var busy = false;
     var socket = null;
+    var wsQueue = [];
     var closed = false;
     var retry = 0;
 
@@ -260,13 +261,14 @@
     }
 
     function sendObject(obj) {
-      if (options.session && !socket) { /* the header carries it */ }
-      var text = JSON.stringify(obj);
       if (socket) {
-        if (options.session) { obj.s = options.session; text = JSON.stringify(obj); }
-        if (socket.readyState === 1) { socket.send(text); } else { queue.push(text); }
+        // over a WebSocket the session id travels in the message; over HTTP it is a header
+        if (options.session) { obj.s = options.session; }
+        var wsText = JSON.stringify(obj);
+        if (socket.readyState === 1) { socket.send(wsText); } else { wsQueue.push(wsText); }
         return;
       }
+      var text = JSON.stringify(obj);
       inflight++;
       queue.push(text);
       postNext();
@@ -276,8 +278,9 @@
       socket = new WebSocket(endpoint);
       socket.onopen = function () {
         retry = 0;
+        // a (re)connected socket has no screen state on the server side we can trust: ask for the whole UI first
         sendObject({ t: "join" });
-        var pending = queue; queue = [];
+        var pending = wsQueue; wsQueue = [];
         for (var i = 0; i < pending.length; i++) { socket.send(pending[i]); }
       };
       socket.onmessage = function (m) { deliver(m.data); };
@@ -335,13 +338,11 @@
     var endpoint = rootEl.getAttribute("data-orin-ui");
     if (endpoint === null) { return null; }
     if (rootEl.__orinUi) { return rootEl.__orinUi; }
-    var wsLike = /^\//.test(endpoint) && typeof location !== "undefined";
     var url = endpoint;
     // A path for a WebSocket is written ws:/path; resolve it against the page.
     if (/^wss?:\/(?!\/)/.test(endpoint) && typeof location !== "undefined") {
       url = (location.protocol === "https:" ? "wss://" : "ws://") + location.host + endpoint.replace(/^wss?:/, "");
     }
-    void wsLike;
     rootEl.__orinUi = connect(rootEl, { endpoint: url, session: rootEl.getAttribute("data-ou-session") || undefined });
     return rootEl.__orinUi;
   }

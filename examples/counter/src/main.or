@@ -1,5 +1,11 @@
-// A counter, written with the builder API. Run: orin run
-import { Node, Program, el, text, div, button, onClick, cls, start, send, renderHtml, renderText, patchesText } from "orin-ui";
+// A counter written with the builder API: the model, the messages, `update` and `view`, then the three things a server
+// does with it: render the first page, apply a message and ship the patches, answer an event sent by the client.
+//
+//   orin run
+import {
+  Node, Program, el, text, div, button, onClick, cls, start, send, respond, renderHtml, renderText,
+  patchesText, patchMessage,
+} from "orin-ui";
 
 type Model = { count: int; };
 type Msg = Increment | Decrement | Reset;
@@ -13,19 +19,36 @@ function update(m: Model, msg: Msg): Model {
 }
 
 function view(m: Model): Node<Msg> {
-  return div([cls("counter")], [
-    button([onClick(Decrement)], [text("-")]),
-    el("span", [cls("value")], [text(m.count.toString())]),
-    button([onClick(Increment)], [text("+")]),
-    button([onClick(Reset)], [text("reset")]),
-  ]);
+  return div(
+    [cls("counter")],
+    [
+      button([onClick(Decrement)], [text("-")]),
+      el("span", [cls("value")], [text(m.count.toString())]),
+      button([onClick(Increment)], [text("+")]),
+      button([onClick(Reset)], [text("reset")]),
+    ],
+  );
 }
 
 function main(): void {
   const program = Program<Model, Msg> { init: Model { count: 0 }, update: update, view: view };
+
+  // 1. server-side rendering: the markup of the first screen
   const s0 = start(program);
-  console.log(renderHtml(s0.dom));
+  console.log("html:    " + renderHtml(s0.dom));
+
+  // 2. a message: the new screen is described as patches against the old one
   const step = send(program, s0, Increment);
-  console.log(patchesText(step.patches));
+  console.log("patches: " + patchesText(step.patches));
+  console.log("json:    " + patchMessage(step.patches));
   console.log(renderText(step.session.dom));
+
+  // 3. an event from the browser: the client reports the path of the element, the program finds the message
+  const reply = respond(
+    program,
+    step.session,
+    "{\"t\":\"event\",\"path\":[0,2],\"event\":\"click\",\"value\":\"\"}",
+  );
+  console.log("reply:   " + reply.body);
+  console.log("count:   " + reply.session.model.count.toString());
 }

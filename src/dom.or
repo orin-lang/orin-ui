@@ -11,9 +11,7 @@
 export type DomAttr = { name: string; value: string; };
 
 // An element: tag, optional key (identity among siblings, used by the diff only, never rendered), attributes, children.
-export type Dom =
-  DElement(string, Option<string>, DomAttr[], Dom[])
-  | DText(string);
+export type Dom = DElement(string, Option<string>, DomAttr[], Dom[]) | DText(string);
 
 // The reserved attribute that lists the event names an element handles ("click input"). Renderers emit it, the client
 // delegates on it, and the server looks the handler up by path.
@@ -63,8 +61,12 @@ export function domAt(roots: Dom[], path: int[]): Option<Dom> {
       return Some(node);
     }
     match (node) {
-      DElement(t, k, a, c) => { level = c; },
-      DText(s) => { return None; },
+      DElement(t, k, a, c) => {
+        level = c;
+      },
+      DText(s) => {
+        return None;
+      },
     }
     i += 1;
   }
@@ -90,7 +92,9 @@ function dumpNode(n: Dom): string {
 function dumpElement(tag: string, key: Option<string>, attrs: DomAttr[], children: Dom[]): string {
   let out = "<" + tag;
   match (key) {
-    Some(k) => { out += "#" + k; },
+    Some(k) => {
+      out += "#" + k;
+    },
     None => {},
   }
   for (const a of attrs) {

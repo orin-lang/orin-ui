@@ -1,6 +1,8 @@
 import { assert, assertEq, assertEqString, assertEqual } from "std:test";
 import { Dom, dElement, dKeyed, dText, domAttr, dumpDom } from "../src";
-import { Patch, Create, Remove, Replace, SetAttr, RemoveAttr, SetText, Move, diff, apply } from "../src";
+import {
+  Patch, Create, Remove, Replace, SetAttr, RemoveAttr, SetText, Move, diff, apply,
+} from "../src";
 
 function li(key: string, text: string): Dom {
   return dKeyed("li", key, [], [dText(text)]);
@@ -9,8 +11,12 @@ function li(key: string, text: string): Dom {
 function checkRoundTrip(name: string, a: Dom[], b: Dom[]): Patch[] {
   const patches = diff(a, b);
   match (apply(a, patches)) {
-    Ok(t) => { assertEqString(dumpDom(t), dumpDom(b), name); },
-    Err(e) => { assert(false, name + ": " + e); },
+    Ok(t) => {
+      assertEqString(dumpDom(t), dumpDom(b), name);
+    },
+    Err(e) => {
+      assert(false, name + ": " + e);
+    },
   }
   return patches;
 }
@@ -23,7 +29,11 @@ function identicalTreesGiveNoPatches(): void {
 
 @Test
 function textChangeIsSetText(): void {
-  const ps = checkRoundTrip("text", [dElement("p", [], [dText("a")])], [dElement("p", [], [dText("b")])]);
+  const ps = checkRoundTrip(
+    "text",
+    [dElement("p", [], [dText("a")])],
+    [dElement("p", [], [dText("b")])],
+  );
   assertEqual(ps, [SetText([0, 0], "b")], "SetText");
 }
 
@@ -32,12 +42,20 @@ function attributeChanges(): void {
   const a = [dElement("a", [domAttr("href", "/1"), domAttr("class", "x")], [])];
   const b = [dElement("a", [domAttr("href", "/2"), domAttr("title", "t")], [])];
   const ps = checkRoundTrip("attrs", a, b);
-  assertEqual(ps, [RemoveAttr([0], "class"), SetAttr([0], "href", "/2"), SetAttr([0], "title", "t")], "attr patches");
+  assertEqual(
+    ps,
+    [RemoveAttr([0], "class"), SetAttr([0], "href", "/2"), SetAttr([0], "title", "t")],
+    "attr patches",
+  );
 }
 
 @Test
 function differentTagIsReplace(): void {
-  const ps = checkRoundTrip("tag", [dElement("div", [], [dText("a")])], [dElement("span", [], [dText("a")])]);
+  const ps = checkRoundTrip(
+    "tag",
+    [dElement("div", [], [dText("a")])],
+    [dElement("span", [], [dText("a")])],
+  );
   assertEqual(ps, [Replace([0], dElement("span", [], [dText("a")]))], "Replace");
   const ps2 = checkRoundTrip("kind", [dText("a")], [dElement("i", [], [])]);
   assertEqual(ps2, [Replace([0], dElement("i", [], []))], "text to element");
@@ -45,15 +63,31 @@ function differentTagIsReplace(): void {
 
 @Test
 function unkeyedChildrenAreMatchedByPosition(): void {
-  const a = [dElement("ul", [], [dElement("li", [], [dText("1")]), dElement("li", [], [dText("2")])])];
-  const b = [dElement("ul", [], [dElement("li", [], [dText("1")]), dElement("li", [], [dText("2")]), dElement("li", [], [dText("3")])])];
+  const a = [
+    dElement("ul", [], [dElement("li", [], [dText("1")]), dElement("li", [], [dText("2")])]),
+  ];
+  const b = [
+    dElement(
+      "ul",
+      [],
+      [
+        dElement("li", [], [dText("1")]),
+        dElement("li", [], [dText("2")]),
+        dElement("li", [], [dText("3")]),
+      ],
+    ),
+  ];
   const ps = checkRoundTrip("append", a, b);
   assertEqual(ps, [Create([0, 2], dElement("li", [], [dText("3")]))], "append");
   const ps2 = checkRoundTrip("truncate", b, a);
   assertEqual(ps2, [Remove([0, 2])], "truncate");
   const c = [dElement("ul", [], [dElement("li", [], [dText("2")])])];
   const ps3 = checkRoundTrip("shift", a, c);
-  assertEqual(ps3, [Remove([0, 1]), SetText([0, 0, 0], "2")], "unkeyed removal of the first reuses the slot");
+  assertEqual(
+    ps3,
+    [Remove([0, 1]), SetText([0, 0, 0], "2")],
+    "unkeyed removal of the first reuses the slot",
+  );
 }
 
 @Test
@@ -101,8 +135,12 @@ function keyedChildKeepsItsStateWhenMoved(): void {
 
 @Test
 function keyedMixedOperations(): void {
-  const a = [dElement("ul", [], [li("a", "A"), li("b", "B"), li("c", "C"), li("d", "D"), li("e", "E")])];
-  const b = [dElement("ul", [], [li("e", "E"), li("x", "X"), li("b", "B"), li("a", "A2"), li("y", "Y")])];
+  const a = [
+    dElement("ul", [], [li("a", "A"), li("b", "B"), li("c", "C"), li("d", "D"), li("e", "E")]),
+  ];
+  const b = [
+    dElement("ul", [], [li("e", "E"), li("x", "X"), li("b", "B"), li("a", "A2"), li("y", "Y")]),
+  ];
   checkRoundTrip("mixed", a, b);
   checkRoundTrip("mixed back", b, a);
 }
@@ -118,7 +156,13 @@ function duplicateKeysDoNotCorrupt(): void {
 @Test
 function keyedAndUnkeyedMixed(): void {
   const a = [dElement("div", [], [dElement("h1", [], [dText("T")]), li("a", "A"), li("b", "B")])];
-  const b = [dElement("div", [], [dElement("h1", [], [dText("T2")]), li("b", "B"), li("a", "A"), dText("tail")])];
+  const b = [
+    dElement(
+      "div",
+      [],
+      [dElement("h1", [], [dText("T2")]), li("b", "B"), li("a", "A"), dText("tail")],
+    ),
+  ];
   checkRoundTrip("mixed keyed and unkeyed", a, b);
 }
 
@@ -130,8 +174,23 @@ function rootListChanges(): void {
 
 @Test
 function nestedChangesUseFullPaths(): void {
-  const a = [dElement("div", [], [dElement("p", [], [dText("x")]), dElement("p", [], [dElement("b", [], [dText("y")])])])];
-  const b = [dElement("div", [], [dElement("p", [], [dText("x")]), dElement("p", [], [dElement("b", [domAttr("id", "q")], [dText("z")])])])];
+  const a = [
+    dElement(
+      "div",
+      [],
+      [dElement("p", [], [dText("x")]), dElement("p", [], [dElement("b", [], [dText("y")])])],
+    ),
+  ];
+  const b = [
+    dElement(
+      "div",
+      [],
+      [
+        dElement("p", [], [dText("x")]),
+        dElement("p", [], [dElement("b", [domAttr("id", "q")], [dText("z")])]),
+      ],
+    ),
+  ];
   const ps = checkRoundTrip("nested", a, b);
   assertEqual(ps, [SetAttr([0, 1, 0], "id", "q"), SetText([0, 1, 0, 0], "z")], "paths");
 }
@@ -149,9 +208,9 @@ function randomList(seed: int, size: int): Dom[] {
   let i = 0;
   while (i < size) {
     s = next(s);
-    const k = (s / 7) % 8;
+    const k = s / 7 % 8;
     s = next(s);
-    const t = (s / 5) % 2;
+    const t = s / 5 % 2;
     if (!used[k.toUsize()]) {
       used[k.toUsize()] = true;
       out.push(li("k" + k.toString(), "t" + t.toString()));
@@ -167,9 +226,9 @@ function randomKeyedListsRoundTrip(): void {
   let n = 0;
   while (n < 300) {
     seed = next(seed);
-    const a = randomList(seed, (seed / 11) % 9);
+    const a = randomList(seed, seed / 11 % 9);
     seed = next(seed);
-    const b = randomList(seed, (seed / 13) % 9);
+    const b = randomList(seed, seed / 13 % 9);
     checkRoundTrip("random " + n.toString(), [dElement("ul", [], a)], [dElement("ul", [], b)]);
     n += 1;
   }
@@ -185,14 +244,24 @@ function randomListsAreMinimalForSingleMoves(): void {
       if (src != to) {
         let keys: string[] = [];
         let i = 0;
-        while (i < 8) { keys.push("k" + i.toString()); i += 1; }
+        while (i < 8) {
+          keys.push("k" + i.toString());
+          i += 1;
+        }
         const moved = keys[src.toUsize()];
         const without = keys.filter(k => k != moved);
-        const target = without.slice(0, to.toUsize()).concat([moved]).concat(without.slice(to.toUsize(), without.length));
+        const target = without
+            .slice(0, to.toUsize())
+            .concat([moved])
+            .concat(without.slice(to.toUsize(), without.length));
         const a = [dElement("ul", [], keys.map(k => li(k, k)))];
         const b = [dElement("ul", [], target.map(k => li(k, k)))];
         const ps = checkRoundTrip("single move", a, b);
-        assertEq(ps.length.toInt(), 1, "one op for a single move " + src.toString() + "->" + to.toString());
+        assertEq(
+          ps.length.toInt(),
+          1,
+          "one op for a single move " + src.toString() + "->" + to.toString(),
+        );
       }
       to += 1;
     }

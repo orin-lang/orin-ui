@@ -1,0 +1,72 @@
+import { assertEq, assertEqString, assert } from "std:test";
+import { start, send, handleEvent, ClientEvent, renderText, renderHtml } from "orin-ui";
+import { program } from "../src/app";
+import { Draft, Add, Toggle, Remove, SetFilter, Done, ClearDone } from "../src/model";
+
+@Test
+function addingATodoClearsTheDraft(): void {
+  const p = program();
+  let s = start(p);
+  s = send(p, s, Draft("  buy milk ")).session;
+  s = send(p, s, Add).session;
+  assertEq(s.model.todos.length.toInt(), 1, "one todo");
+  assertEqString(s.model.todos[0].title, "buy milk", "trimmed");
+  assertEqString(s.model.draft, "", "draft cleared");
+}
+
+@Test
+function blankTodosAreIgnored(): void {
+  const p = program();
+  let s = start(p);
+  s = send(p, s, Draft("   ")).session;
+  s = send(p, s, Add).session;
+  assertEq(s.model.todos.length.toInt(), 0, "nothing added");
+}
+
+@Test
+function theViewIsOxAndEscapesUserText(): void {
+  const p = program();
+  let s = start(p);
+  s = send(p, s, Draft("<img src=x onerror=alert(1)>")).session;
+  s = send(p, s, Add).session;
+  const html = renderHtml(s.dom);
+  assert(html.includes("<span>&lt;img src=x onerror=alert(1)&gt;</span>"), "escaped in the list");
+  assert(!html.includes("<img"), "no element was created");
+}
+
+@Test
+function eventsReachTheRightItem(): void {
+  const p = program();
+  let s = start(p);
+  s = send(p, s, Draft("a")).session;
+  s = send(p, s, Add).session;
+  s = send(p, s, Draft("b")).session;
+  s = send(p, s, Add).session;
+  // <div><h1/><form/><ul><li a/><li b/></ul>...: the remove button of the second item is [0, 2, 1, 1]
+  const removed = handleEvent(p, s, ClientEvent { path: [0, 2, 1, 1], event: "click", value: "" });
+  assert(removed.handled, "handled");
+  assertEq(removed.session.model.todos.length.toInt(), 1, "one left");
+  assertEqString(removed.session.model.todos[0].title, "a", "b was removed");
+  // the checkbox of the first item: [0, 2, 0, 0, 0]
+  const toggled = handleEvent(
+    p,
+    s,
+    ClientEvent { path: [0, 2, 0, 0, 0], event: "change", value: "true" },
+  );
+  assert(toggled.session.model.todos[0].done, "toggled");
+}
+
+@Test
+function filterHidesItemsAndOnlyThoseItemsArePatched(): void {
+  const p = program();
+  let s = start(p);
+  s = send(p, s, Draft("a")).session;
+  s = send(p, s, Add).session;
+  s = send(p, s, Draft("b")).session;
+  s = send(p, s, Add).session;
+  s = send(p, s, Toggle(1)).session;
+  const step = send(p, s, SetFilter(Done));
+  assertEq(step.session.model.todos.length.toInt(), 2, "model keeps both");
+  assert(renderText(step.session.dom).includes("\"a\""), "a is shown");
+  assert(!renderText(step.session.dom).includes("\"b\""), "b is hidden");
+}

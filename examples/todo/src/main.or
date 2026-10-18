@@ -1,0 +1,19 @@
+// The todo list driven by a script of messages; each step prints the patches the client would receive.
+import { start, send, renderHtml, renderText, patchesText, patchMessage } from "orin-ui";
+import { program } from "./app";
+import { Draft, Add, Toggle, SetFilter, Done } from "./model";
+
+function main(): void {
+  const p = program();
+  let s = start(p);
+  console.log(renderText(s.dom));
+  const script = [Draft("buy milk"), Add, Draft("write docs"), Add, Toggle(1), SetFilter(Done)];
+  for (const msg of script) {
+    const step = send(p, s, msg);
+    console.log("---");
+    console.log(patchesText(step.patches));
+    s = step.session;
+  }
+  console.log("---");
+  console.log(renderHtml(s.dom));
+}

@@ -19,23 +19,41 @@ export interface Renderer {
 // Server-side rendering: always the full markup.
 export class HtmlRenderer implements Renderer {
   constructor() {}
-  name(): string { return "html"; }
-  mount(roots: Dom[]): string { return renderHtml(roots); }
-  update(before: Dom[], after: Dom[], patches: Patch[]): string { return renderHtml(after); }
+  name(): string {
+    return "html";
+  }
+  mount(roots: Dom[]): string {
+    return renderHtml(roots);
+  }
+  update(before: Dom[], after: Dom[], patches: Patch[]): string {
+    return renderHtml(after);
+  }
 }
 
 // The JSON patch stream for client/orin-ui.js.
 export class PatchStreamRenderer implements Renderer {
   constructor() {}
-  name(): string { return "patch-stream"; }
-  mount(roots: Dom[]): string { return mountMessage(roots); }
-  update(before: Dom[], after: Dom[], patches: Patch[]): string { return patchMessage(patches); }
+  name(): string {
+    return "patch-stream";
+  }
+  mount(roots: Dom[]): string {
+    return mountMessage(roots);
+  }
+  update(before: Dom[], after: Dom[], patches: Patch[]): string {
+    return patchMessage(patches);
+  }
 }
 
 // Text: the outline for `mount`, the operations as lines for `update`.
 export class TextRenderer implements Renderer {
   constructor() {}
-  name(): string { return "text"; }
-  mount(roots: Dom[]): string { return renderText(roots); }
-  update(before: Dom[], after: Dom[], patches: Patch[]): string { return patchesText(patches); }
+  name(): string {
+    return "text";
+  }
+  mount(roots: Dom[]): string {
+    return renderText(roots);
+  }
+  update(before: Dom[], after: Dom[], patches: Patch[]): string {
+    return patchesText(patches);
+  }
 }

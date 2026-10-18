@@ -12,7 +12,10 @@
 //   {"t":"event","path":[..],"event":"click","value":".."}
 //
 // The text is plain JSON in which `< > &` and U+2028/U+2029 are escaped, so it can also be embedded in a <script> element.
-import { parseDocument, defaultReadOptions, JsonValue, JsonMember, ValueObject, ValueArray, ValueString, ValueNumber } from "std:json";
+import {
+  parseDocument, defaultReadOptions, JsonValue, JsonMember, ValueObject, ValueArray, ValueString,
+  ValueNumber,
+} from "std:json";
 import { numberAsInt } from "std:json/number";
 import { Dom, DomAttr, DElement, DText } from "./dom";
 import { Patch, Create, Remove, Replace, SetAttr, RemoveAttr, SetText, Move } from "./diff";
@@ -40,8 +43,12 @@ export function jsonQuote(s: string): string {
     } else if (c == 9) {
       rep = "\\t";
     } else if (c < 32 || c == 60 || c == 62 || c == 38 || c == 127) {
-      rep = "\\u00" + HEX.substring((c / 16).toUsize(), (c / 16).toUsize() + 1) + HEX.substring((c % 16).toUsize(), (c % 16).toUsize() + 1);
-    } else if (c == 226 && i + 2 < n && s.charCodeAt(i + 1) == 128 && (s.charCodeAt(i + 2) == 168 || s.charCodeAt(i + 2) == 169)) {
+      rep = "\\u00" + HEX.substring((c / 16).toUsize(), (c / 16).toUsize() + 1)
+          + HEX.substring((c % 16).toUsize(), (c % 16).toUsize() + 1);
+    } else if (c == 226
+        && i + 2 < n
+        && s.charCodeAt(i + 1) == 128
+        && (s.charCodeAt(i + 2) == 168 || s.charCodeAt(i + 2) == 169)) {
       rep = s.charCodeAt(i + 2) == 168 ? "\\u2028" : "\\u2029";
       width = 3;
     }
@@ -65,21 +72,27 @@ export function domJson(node: Dom): string {
   return match (node) {
     DText(s) => jsonQuote(s),
     DElement(tag, key, attrs, children) => "{\"t\":" + jsonQuote(tag) + ",\"a\":["
-      + attrs.map(a => "[" + jsonQuote(a.name) + "," + jsonQuote(a.value) + "]").join(",")
-      + "],\"c\":[" + children.map(c => domJson(c)).join(",") + "]}",
+        + attrs.map(a => "[" + jsonQuote(a.name) + "," + jsonQuote(a.value) + "]").join(",")
+        + "],\"c\":[" + children.map(c => domJson(c)).join(",") + "]}",
   };
 }
 
 // patchJson(patch) -- one operation as JSON.
 export function patchJson(p: Patch): string {
   return match (p) {
-    Create(path, node) => "{\"op\":\"create\",\"path\":" + pathJson(path) + ",\"node\":" + domJson(node) + "}",
+    Create(path, node) => "{\"op\":\"create\",\"path\":" + pathJson(path) + ",\"node\":"
+        + domJson(node) + "}",
     Remove(path) => "{\"op\":\"remove\",\"path\":" + pathJson(path) + "}",
-    Replace(path, node) => "{\"op\":\"replace\",\"path\":" + pathJson(path) + ",\"node\":" + domJson(node) + "}",
-    SetAttr(path, name, value) => "{\"op\":\"attr\",\"path\":" + pathJson(path) + ",\"name\":" + jsonQuote(name) + ",\"value\":" + jsonQuote(value) + "}",
-    RemoveAttr(path, name) => "{\"op\":\"unattr\",\"path\":" + pathJson(path) + ",\"name\":" + jsonQuote(name) + "}",
-    SetText(path, text) => "{\"op\":\"text\",\"path\":" + pathJson(path) + ",\"text\":" + jsonQuote(text) + "}",
-    Move(parent, fromIdx, to) => "{\"op\":\"move\",\"path\":" + pathJson(parent) + ",\"from\":" + fromIdx.toString() + ",\"to\":" + to.toString() + "}",
+    Replace(path, node) => "{\"op\":\"replace\",\"path\":" + pathJson(path) + ",\"node\":"
+        + domJson(node) + "}",
+    SetAttr(path, name, value) => "{\"op\":\"attr\",\"path\":" + pathJson(path) + ",\"name\":"
+        + jsonQuote(name) + ",\"value\":" + jsonQuote(value) + "}",
+    RemoveAttr(path, name) => "{\"op\":\"unattr\",\"path\":" + pathJson(path) + ",\"name\":"
+        + jsonQuote(name) + "}",
+    SetText(path, text) => "{\"op\":\"text\",\"path\":" + pathJson(path) + ",\"text\":"
+        + jsonQuote(text) + "}",
+    Move(parent, fromIdx, to) => "{\"op\":\"move\",\"path\":" + pathJson(parent) + ",\"from\":"
+        + fromIdx.toString() + ",\"to\":" + to.toString() + "}",
   };
 }
 
@@ -117,14 +130,21 @@ export function parseClientMessage(text: string): Result<ClientMessage, string> 
   const parsed = parseDocument(text, defaultReadOptions());
   const doc = match (parsed) {
     Ok(v) => v,
-    Err(e) => { return Err("invalid JSON"); },
+    Err(e) => {
+      return Err("invalid JSON");
+    },
   };
   const members = match (doc) {
     ValueObject(ms) => ms,
-    _ => { return Err("not an object"); },
+    _ => {
+      return Err("not an object");
+    },
   };
   const kind = match (member(members, "t")) {
-    Some(v) => match (v) { ValueString(s) => s, _ => "" },
+    Some(v) => match (v) {
+      ValueString(s) => s,
+      _ => "",
+    },
     None => "",
   };
   if (kind == "join") {
@@ -147,14 +167,20 @@ export function parseClientEvent(text: string): Result<ClientEvent, string> {
 
 function eventOf(members: JsonMember[]): Result<ClientEvent, string> {
   const event = match (member(members, "event")) {
-    Some(v) => match (v) { ValueString(s) => s, _ => "" },
+    Some(v) => match (v) {
+      ValueString(s) => s,
+      _ => "",
+    },
     None => "",
   };
   if (event.length == 0) {
     return Err("missing event");
   }
   const value = match (member(members, "value")) {
-    Some(v) => match (v) { ValueString(s) => s, _ => "" },
+    Some(v) => match (v) {
+      ValueString(s) => s,
+      _ => "",
+    },
     None => "",
   };
   let path: int[] = [];
@@ -166,18 +192,28 @@ function eventOf(members: JsonMember[]): Result<ClientEvent, string> {
             match (item) {
               ValueNumber(num) => {
                 match (numberAsInt(num)) {
-                  Ok(i) => { path.push(i); },
-                  Err(e) => { return Err("bad path index"); },
+                  Ok(i) => {
+                    path.push(i);
+                  },
+                  Err(e) => {
+                    return Err("bad path index");
+                  },
                 }
               },
-              _ => { return Err("bad path index"); },
+              _ => {
+                return Err("bad path index");
+              },
             }
           }
         },
-        _ => { return Err("bad path"); },
+        _ => {
+          return Err("bad path");
+        },
       }
     },
-    None => { return Err("missing path"); },
+    None => {
+      return Err("missing path");
+    },
   }
   return Ok(ClientEvent { path: path, event: event, value: value });
 }

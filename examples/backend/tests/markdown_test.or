@@ -1,0 +1,30 @@
+import { assertEqString } from "std:test";
+import { dElement, dText, domAttr, Renderer } from "orin-ui";
+import { MarkdownRenderer } from "../src/markdown";
+
+@Test
+function headingsParagraphsAndLists(): void {
+  const r = new MarkdownRenderer();
+  const dom = [
+    dElement("h1", [], [dText("Title")]),
+    dElement(
+      "p",
+      [],
+      [
+        dText("a "),
+        dElement("strong", [], [dText("b")]),
+        dText(" "),
+        dElement("a", [domAttr("href", "/x")], [dText("c")]),
+      ],
+    ),
+    dElement("ul", [], [dElement("li", [], [dText("one")]), dElement("li", [], [dText("two")])]),
+  ];
+  assertEqString(r.mount(dom), "# Title\n\na **b** [c](/x)\n\n- one\n- two", "markdown");
+}
+
+@Test
+function itIsABackendLikeAnyOther(): void {
+  const r: Renderer = new MarkdownRenderer();
+  assertEqString(r.name(), "markdown", "name");
+  assertEqString(r.update([dText("a")], [dText("b")], []), "b", "update");
+}
