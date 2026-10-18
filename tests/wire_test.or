@@ -1,0 +1,154 @@
+import { assertEqString, assertEqual, assert, assertEq } from "std:test";
+import {
+  dElement, dKeyed, dText, domAttr, jsonQuote, domJson, patchJson, mountMessage, patchMessage,
+  mountMessageSeq, patchMessageSeq, Create, Remove, Replace, SetAttr, RemoveAttr, SetText, Move,
+  ClientEvent, ClientMessage, Join, Event, parseClientMessage, parseClientEvent,
+} from "../src";
+
+@Test
+function quotingEscapesControlsAndHtml(): void {
+  assertEqString(jsonQuote("plain"), "\"plain\"", "plain");
+  assertEqString(jsonQuote("a\"b\\c"), "\"a\\\"b\\\\c\"", "quote and backslash");
+  assertEqString(jsonQuote("l1\nl2\r\t"), "\"l1\\nl2\\r\\t\"", "newline, return, tab");
+  assertEqString(jsonQuote(String.fromCharCode(1)), "\"\\u0001\"", "control character");
+  assertEqString(
+    jsonQuote("</script>"),
+    "\"\\u003c/script\\u003e\"",
+    "safe inside a script element",
+  );
+  assertEqString(jsonQuote("a&b"), "\"a\\u0026b\"", "ampersand");
+  assertEqString(jsonQuote("日本 ✓"), "\"日本 ✓\"", "utf-8 unchanged");
+  assertEqString(jsonQuote("a b"), "\"a\\u2028b\"", "line separator");
+  assertEqString(jsonQuote(""), "\"\"", "empty");
+}
+
+@Test
+function nodesAsJson(): void {
+  assertEqString(domJson(dText("hi")), "\"hi\"", "text");
+  const n = dElement(
+    "a",
+    [domAttr("href", "/x"), domAttr("class", "c")],
+    [dText("go"), dElement("b", [], [])],
+  );
+  assertEqString(
+    domJson(n),
+    "{\"t\":\"a\",\"a\":[[\"href\",\"/x\"],[\"class\",\"c\"]],\"c\":[\"go\",{\"t\":\"b\",\"a\":[],\"c\":[]}]}",
+    "element",
+  );
+}
+
+@Test
+function patchesAsJson(): void {
+  assertEqString(
+    patchJson(Create([0, 2], dText("x"))),
+    "{\"op\":\"create\",\"path\":[0,2],\"node\":\"x\"}",
+    "create",
+  );
+  assertEqString(patchJson(Remove([1])), "{\"op\":\"remove\",\"path\":[1]}", "remove");
+  assertEqString(
+    patchJson(Replace([0], dElement("i", [], []))),
+    "{\"op\":\"replace\",\"path\":[0],\"node\":{\"t\":\"i\",\"a\":[],\"c\":[]}}",
+    "replace",
+  );
+  assertEqString(
+    patchJson(SetAttr([0, 1], "class", "a\"b")),
+    "{\"op\":\"attr\",\"path\":[0,1],\"name\":\"class\",\"value\":\"a\\\"b\"}",
+    "attr",
+  );
+  assertEqString(
+    patchJson(RemoveAttr([3], "id")),
+    "{\"op\":\"unattr\",\"path\":[3],\"name\":\"id\"}",
+    "unattr",
+  );
+  assertEqString(
+    patchJson(SetText([0, 0, 0], "7")),
+    "{\"op\":\"text\",\"path\":[0,0,0],\"text\":\"7\"}",
+    "text",
+  );
+  assertEqString(
+    patchJson(Move([0], 3, 0)),
+    "{\"op\":\"move\",\"path\":[0],\"from\":3,\"to\":0}",
+    "move",
+  );
+  const root: int[] = [];
+  assertEqString(
+    patchJson(Move(root, 1, 0)),
+    "{\"op\":\"move\",\"path\":[],\"from\":1,\"to\":0}",
+    "move in the root list",
+  );
+}
+
+@Test
+function messages(): void {
+  assertEqString(
+    mountMessage([dText("a"), dKeyed("p", "k", [], [])]),
+    "{\"t\":\"mount\",\"dom\":[\"a\",{\"t\":\"p\",\"a\":[],\"c\":[]}]}",
+    "mount",
+  );
+  assertEqString(patchMessage([]), "{\"t\":\"patch\",\"ops\":[]}", "empty patch");
+  assertEqString(
+    patchMessage([Remove([0]), SetText([1], "x")]),
+    "{\"t\":\"patch\",\"ops\":[{\"op\":\"remove\",\"path\":[0]},{\"op\":\"text\",\"path\":[1],\"text\":\"x\"}]}",
+    "patch",
+  );
+}
+
+@Test
+function parsesEvents(): void {
+  const r = parseClientEvent(
+    "{\"t\":\"event\",\"path\":[0,2,1],\"event\":\"click\",\"value\":\"\"}",
+  );
+  assertEqual(r, Ok(ClientEvent { path: [0, 2, 1], event: "click", value: "" }), "click");
+  const r2 = parseClientEvent(
+    "{\"s\":\"abc\",\"value\":\"h\\u00e9llo \\\"x\\\"\",\"event\":\"input\",\"path\":[4],\"t\":\"event\"}",
+  );
+  assertEqual(
+    r2,
+    Ok(ClientEvent { path: [4], event: "input", value: "héllo \"x\"" }),
+    "field order and escapes do not matter",
+  );
+}
+
+@Test
+function parsesJoin(): void {
+  assertEqual(parseClientMessage("{\"t\":\"join\"}"), Ok(Join), "join");
+  assertEqual(parseClientMessage("{\"t\":\"join\",\"s\":\"1\"}"), Ok(Join), "join with a session");
+}
+
+@Test
+function rejectsMalformedMessages(): void {
+  assert(parseClientMessage("").isErr(), "empty");
+  assert(parseClientMessage("not json").isErr(), "not json");
+  assert(parseClientMessage("[]").isErr(), "array");
+  assert(parseClientMessage("{}").isErr(), "no type");
+  assert(parseClientMessage("{\"t\":\"nope\"}").isErr(), "unknown type");
+  assert(parseClientMessage("{\"t\":\"event\",\"event\":\"click\"}").isErr(), "no path");
+  assert(parseClientMessage("{\"t\":\"event\",\"path\":[0]}").isErr(), "no event name");
+  assert(
+    parseClientMessage("{\"t\":\"event\",\"path\":\"0\",\"event\":\"click\"}").isErr(),
+    "path not an array",
+  );
+  assert(
+    parseClientMessage("{\"t\":\"event\",\"path\":[\"a\"],\"event\":\"click\"}").isErr(),
+    "path element not a number",
+  );
+  assert(
+    parseClientMessage("{\"t\":\"event\",\"path\":[1.5],\"event\":\"click\"}").isErr(),
+    "path element not an integer",
+  );
+  assert(parseClientEvent("{\"t\":\"join\"}").isErr(), "join is not an event");
+}
+
+@Test
+function numberedMessages(): void {
+  assertEqString(
+    patchMessageSeq([Remove([0])], 7),
+    "{\"t\":\"patch\",\"n\":7,\"ops\":[{\"op\":\"remove\",\"path\":[0]}]}",
+    "numbered patch",
+  );
+  assertEqString(
+    mountMessageSeq([dText("a")], 0),
+    "{\"t\":\"mount\",\"n\":0,\"dom\":[\"a\"]}",
+    "numbered mount",
+  );
+}

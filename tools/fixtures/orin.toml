@@ -1,0 +1,7 @@
+[package]
+name = "orin-ui-fixtures"
+version = "0.1.0"
+entry = "src/main.or"
+
+[dependencies]
+orin-ui = { path = "../.." }

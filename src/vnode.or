@@ -1,0 +1,267 @@
+// Resolving a view: from the tree the program wrote (`Node<M>`) to the normalised tree the runtime works on (`VNode<M>`),
+// and from there to the message-free `Dom` that renderers and the diff consume.
+//
+// Resolving
+//   * runs `Component` thunks and flattens `Fragment`s;
+//   * drops empty text and merges adjacent text (so the tree and a browser's DOM have the same shape);
+//   * drops elements and attributes that are not safe (safe.or), sanitises URL attributes;
+//   * splits an element's attributes into plain attributes, the key and the event bindings;
+//   * for a duplicate attribute or event the last one wins.
+import { DomAttr, Dom, DElement, DText, EVENTS_ATTR } from "./dom";
+import {
+  Attr, Node, Prop, Key, On, OnValue, NoAttr, Element, Text, Fragment, Component,
+} from "./node";
+import { isValidTag, isForbiddenTag, isAllowedAttr, safeAttrValue, asciiLower } from "./safe";
+
+// What an event produces: a fixed message, or one computed from the event's text payload.
+export type Handler<M> = Fixed(M) | FromValue((value: string) => M);
+
+export type Binding<M> = { event: string; handler: Handler<M>; };
+
+export type VElem<M> = {
+  tag: string;
+  key: Option<string>;
+  attrs: DomAttr[];
+  events: Binding<M>[];
+  children: VNode<M>[];
+};
+
+export type VNode<M> = VElement(VElem<M>) | VText(string);
+
+// resolve(node) -- the normalised nodes a view stands for (a fragment can stand for several, `nothing()` for none).
+export function resolve<M>(node: Node<M>): VNode<M>[] {
+  return resolveAll<M>([node]);
+}
+
+// resolveAll(nodes) -- as `resolve` for a list of siblings.
+export function resolveAll<M>(nodes: Node<M>[]): VNode<M>[] {
+  let out: VNode<M>[] = [];
+  for (const n of nodes) {
+    for (const v of flatten<M>(n)) {
+      out.push(v);
+    }
+  }
+  return mergeText<M>(out);
+}
+
+function mergeText<M>(nodes: VNode<M>[]): VNode<M>[] {
+  let out: VNode<M>[] = [];
+  let pending = "";
+  let hasPending = false;
+  for (const n of nodes) {
+    match (n) {
+      VText(s) => {
+        pending += s;
+        hasPending = true;
+      },
+      VElement(e) => {
+        if (hasPending && pending.length > 0) {
+          out.push(VText<M>(pending));
+        }
+        pending = "";
+        hasPending = false;
+        out.push(n);
+      },
+    }
+  }
+  if (hasPending && pending.length > 0) {
+    out.push(VText<M>(pending));
+  }
+  return out;
+}
+
+function flatten<M>(node: Node<M>): VNode<M>[] {
+  return match (node) {
+    Text(s) => textNode<M>(s),
+    Fragment(cs) => resolveAll<M>(cs),
+    Component(name, key, render) => applyKey<M>(resolve<M>(render()), key),
+    Element(tag, attrs, cs) => elementNode<M>(tag, attrs, cs),
+  };
+}
+
+function textNode<M>(s: string): VNode<M>[] {
+  if (s.length == 0) {
+    return [];
+  }
+  return [VText<M>(s)];
+}
+
+// A component's key goes to the element it renders (only when it renders exactly one, unkeyed element).
+function applyKey<M>(nodes: VNode<M>[], key: Option<string>): VNode<M>[] {
+  if (key.isNone() || nodes.length != 1) {
+    return nodes;
+  }
+  return match (nodes[0]) {
+    VElement(e) => e.key.isSome() ? nodes : [VElement<M>(VElem<M> { ...e, key: key })],
+    VText(s) => nodes,
+  };
+}
+
+function elementNode<M>(tag: string, attrs: Attr<M>[], children: Node<M>[]): VNode<M>[] {
+  if (!isValidTag(tag) || isForbiddenTag(tag)) {
+    return [];
+  }
+  let key: Option<string> = None;
+  let plain: DomAttr[] = [];
+  let events: Binding<M>[] = [];
+  for (const at of attrs) {
+    match (at) {
+      Prop(n, v) => {
+        if (isAllowedAttr(n)) {
+          plain = setAttr(plain, n, safeAttrValue(n, v));
+        }
+      },
+      Key(k) => {
+        key = Some(k);
+      },
+      On(ev, m) => {
+        events = setBinding<M>(events, ev, Fixed<M>(m));
+      },
+      OnValue(ev, f) => {
+        events = setBinding<M>(events, ev, FromValue<M>(f));
+      },
+      NoAttr => {},
+    }
+  }
+  return [
+    VElement<M>(
+      VElem<M> {
+        tag: tag,
+        key: key,
+        attrs: plain,
+        events: events,
+        children: resolveAll<M>(children),
+      },
+    ),
+  ];
+}
+
+function setAttr(attrs: DomAttr[], name: string, value: string): DomAttr[] {
+  let out: DomAttr[] = [];
+  let found = false;
+  for (const a of attrs) {
+    if (a.name == name) {
+      out.push(DomAttr { name: name, value: value });
+      found = true;
+    } else {
+      out.push(a);
+    }
+  }
+  if (!found) {
+    out.push(DomAttr { name: name, value: value });
+  }
+  return out;
+}
+
+function isEventName(e: string): bool {
+  if (e.length == 0 || e.length > 32) {
+    return false;
+  }
+  let i: usize = 0;
+  while (i < e.length) {
+    const c = e.charCodeAt(i);
+    const ok = c >= 97 && c <= 122 || c >= 65 && c <= 90 || c >= 48 && c <= 57;
+    if (!ok) {
+      return false;
+    }
+    i += 1;
+  }
+  return true;
+}
+
+function setBinding<M>(events: Binding<M>[], event: string, handler: Handler<M>): Binding<M>[] {
+  if (!isEventName(event)) {
+    return events;
+  }
+  const name = asciiLower(event);
+  let out: Binding<M>[] = [];
+  for (const b of events) {
+    if (b.event != name) {
+      out.push(b);
+    }
+  }
+  out.push(Binding<M> { event: name, handler: handler });
+  return out;
+}
+
+// ---------------------------------------------------------------- lowering to Dom
+
+// toDom(nodes) -- the message-free tree. An element with events gets the attribute `data-ou-on="click input"` (event names
+// sorted), which is how a renderer marks it and how a client knows where to listen.
+export function toDom<M>(nodes: VNode<M>[]): Dom[] {
+  return nodes.map(n => domNode<M>(n));
+}
+
+function domNode<M>(n: VNode<M>): Dom {
+  return match (n) {
+    VText(s) => DText(s),
+    VElement(e) => DElement(
+      e.tag,
+      e.key,
+      withEvents<M>(e.attrs, e.events),
+      e.children.map(c => domNode<M>(c)),
+    ),
+  };
+}
+
+function withEvents<M>(attrs: DomAttr[], events: Binding<M>[]): DomAttr[] {
+  if (events.length == 0) {
+    return attrs;
+  }
+  const names = events
+      .map(b => b.event)
+      .sort((a: string, b: string): int => a < b ? -1 : a > b ? 1 : 0);
+  return attrs.concat([DomAttr { name: EVENTS_ATTR, value: names.join(" ") }]);
+}
+
+// ---------------------------------------------------------------- routing events back
+
+// handlerAt(nodes, path, event) -- the handler of `event` on the element at `path` (the child indices from the root list).
+export function handlerAt<M>(nodes: VNode<M>[], path: int[], event: string): Option<Handler<M>> {
+  if (path.length == 0) {
+    return None;
+  }
+  let level = nodes;
+  let i: usize = 0;
+  while (i < path.length) {
+    const idx = path[i];
+    if (idx < 0 || idx >= level.length.toInt()) {
+      return None;
+    }
+    match (level[idx.toUsize()]) {
+      VText(s) => {
+        return None;
+      },
+      VElement(e) => {
+        if (i + 1 == path.length) {
+          const want = asciiLower(event);
+          for (const b of e.events) {
+            if (b.event == want) {
+              return Some(b.handler);
+            }
+          }
+          return None;
+        }
+        level = e.children;
+      },
+    }
+    i += 1;
+  }
+  return None;
+}
+
+// messageAt(nodes, path, event, payload) -- the message the element at `path` produces for `event`, if it handles it.
+export function messageAt<M>(
+  nodes: VNode<M>[],
+  path: int[],
+  event: string,
+  payload: string,
+): Option<M> {
+  return match (handlerAt<M>(nodes, path, event)) {
+    Some(h) => match (h) {
+      Fixed(m) => Some(m),
+      FromValue(f) => Some(f(payload)),
+    },
+    None => None,
+  };
+}

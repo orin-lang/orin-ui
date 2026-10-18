@@ -1,0 +1,59 @@
+// One program, three backends. The runtime produces the same Dom and patches for all of them.
+import {
+  Node, Program, Renderer, HtmlRenderer, PatchStreamRenderer, TextRenderer, el, text, h1, p, ul, li,
+  strong, a, href, key, onClick, start, send,
+} from "orin-ui";
+import { MarkdownRenderer } from "./markdown";
+
+type Model = { items: string[]; };
+type Msg = Add(string);
+
+function view(m: Model): Node<Msg> {
+  return el(
+    "section",
+    [],
+    [
+      h1([], [text("Shopping")]),
+      p(
+        [],
+        [
+          text("Remember the "),
+          strong([], [text("milk")]),
+          text(". See "),
+          a([href("/list")], [text("the list")]),
+          text("."),
+        ],
+      ),
+      ul([], m.items.map(i => li([key(i), onClick(Add(i))], [text(i)]))),
+    ],
+  );
+}
+
+function update(m: Model, msg: Msg): Model {
+  return match (msg) {
+    Add(s) => Model { items: m.items.concat([s]) },
+  };
+}
+
+function main(): void {
+  const program = Program<Model, Msg> {
+    init: Model { items: ["eggs", "bread"] },
+    update: update,
+    view: view,
+  };
+  const s0 = start(program);
+  const step = send(program, s0, Add("tea"));
+  // a driver that knows nothing about a backend except the interface
+  const backends: Renderer[] = [
+    new HtmlRenderer(),
+    new PatchStreamRenderer(),
+    new TextRenderer(),
+    new MarkdownRenderer(),
+  ];
+  for (const r of backends) {
+    console.log("[" + r.name() + "] mount");
+    console.log(r.mount(s0.dom));
+    console.log("[" + r.name() + "] update after Add(\"tea\")");
+    console.log(r.update(s0.dom, step.session.dom, step.patches));
+  }
+}

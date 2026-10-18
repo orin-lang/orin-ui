@@ -1,0 +1,261 @@
+// Reconciliation: the difference between two Dom trees as a list of patch operations.
+//
+// A patch list is meant to be applied in order to the old tree and yields the new tree (`apply` in apply.or is the reference
+// implementation; the JS client implements the same operations on the browser DOM). Paths are child indices from the root
+// list: [2, 0] is the first child of the third root node.
+//
+//   Create(path, node)        insert `node` so that it has index `last(path)` among the children of `parent(path)`
+//   Remove(path)              remove the node at `path`
+//   Replace(path, node)       replace the node at `path` by `node` (different tag, or element <-> text)
+//   SetAttr(path, name, value)  set an attribute of the element at `path`
+//   RemoveAttr(path, name)
+//   SetText(path, text)       change the text of the text node at `path`
+//   Move(parent, from, to)    take the child at index `from` out of the node at path `parent` (the root list for `[]`) and
+//                             insert it so that it has index `to` (counted after taking it out)
+//
+// Children are matched by key. A child's effective key is its explicit key, or else its position. Matched children are
+// diffed in place; unmatched old children are removed, unmatched new children are created, and matched children that are
+// out of order are moved (children on a longest increasing run of the old order stay where they are, so a single insert,
+// delete or move produces a single operation).
+import { Dom, DomAttr, DElement, DText } from "./dom";
+
+export type Patch =
+  Create(int[], Dom)
+  | Remove(int[])
+  | Replace(int[], Dom)
+  | SetAttr(int[], string, string)
+  | RemoveAttr(int[], string)
+  | SetText(int[], string)
+  | Move(int[], int, int);
+
+// diff(old, next) -- the patches that turn the list of root nodes `old` into `next`.
+export function diff(old: Dom[], next: Dom[]): Patch[] {
+  const root: int[] = [];
+  return diffChildren(root, old, next);
+}
+
+function child(path: int[], index: int): int[] {
+  return path.concat([index]);
+}
+
+function diffNode(path: int[], a: Dom, b: Dom): Patch[] {
+  return match (a) {
+    DText(x) => match (b) {
+      DText(y) => x == y ? [] : [SetText(path, y)],
+      DElement(t, k, at, cs) => [Replace(path, b)],
+    },
+    DElement(t1, k1, a1, c1) => match (b) {
+      DText(y) => [Replace(path, b)],
+      DElement(t2, k2, a2, c2) => t1 != t2 ? [Replace(path, b)] : diffElement(path, a1, c1, a2, c2),
+    },
+  };
+}
+
+function diffElement(path: int[], a1: DomAttr[], c1: Dom[], a2: DomAttr[], c2: Dom[]): Patch[] {
+  let out = diffAttrs(path, a1, a2);
+  for (const p of diffChildren(path, c1, c2)) {
+    out.push(p);
+  }
+  return out;
+}
+
+function findAttr(attrs: DomAttr[], name: string): Option<string> {
+  for (const a of attrs) {
+    if (a.name == name) {
+      return Some(a.value);
+    }
+  }
+  return None;
+}
+
+function diffAttrs(path: int[], old: DomAttr[], next: DomAttr[]): Patch[] {
+  let out: Patch[] = [];
+  for (const a of old) {
+    if (findAttr(next, a.name).isNone()) {
+      out.push(RemoveAttr(path, a.name));
+    }
+  }
+  for (const a of next) {
+    const before = findAttr(old, a.name);
+    const same = match (before) {
+      Some(v) => v == a.value,
+      None => false,
+    };
+    if (!same) {
+      out.push(SetAttr(path, a.name, a.value));
+    }
+  }
+  return out;
+}
+
+// The effective key of every child: "k:" + key, or "i:" + index when it has none. A repeated explicit key is made unique
+// ("d:" + index) so that only its first occurrence can be matched.
+function effectiveKeys(nodes: Dom[]): string[] {
+  let seen = new Map<string, bool>();
+  let out: string[] = [];
+  let i = 0;
+  for (const n of nodes) {
+    const explicit = match (n) {
+      DElement(t, k, a, c) => k,
+      DText(s) => None,
+    };
+    const k = match (explicit) {
+      Some(x) => seen.has("k:" + x) ? "d:" + i.toString() : "k:" + x,
+      None => "i:" + i.toString(),
+    };
+    seen.set(k, true);
+    out.push(k);
+    i += 1;
+  }
+  return out;
+}
+
+function diffChildren(path: int[], old: Dom[], next: Dom[]): Patch[] {
+  const oldKeys = effectiveKeys(old);
+  const newKeys = effectiveKeys(next);
+  let oldIndex = new Map<string, int>();
+  let i = 0;
+  for (const k of oldKeys) {
+    oldIndex.set(k, i);
+    i += 1;
+  }
+  // For each new child: the index of the old child it continues, or -1.
+  let source: int[] = [];
+  let used: bool[] = [];
+  for (const o of old) {
+    used.push(false);
+  }
+  for (const k of newKeys) {
+    const found = oldIndex.get(k).unwrapOr(-1);
+    if (found >= 0 && !used[found.toUsize()]) {
+      used[found.toUsize()] = true;
+      source.push(found);
+    } else {
+      source.push(-1);
+    }
+  }
+  let out: Patch[] = [];
+  // 1. remove old children that are not continued, last first so the indices stay valid.
+  let cur: int[] = []; // the old indices still present, in current order
+  let r = old.length.toInt() - 1;
+  while (r >= 0) {
+    if (!used[r.toUsize()]) {
+      out.push(Remove(child(path, r)));
+    }
+    r -= 1;
+  }
+  let o = 0;
+  while (o < old.length.toInt()) {
+    if (used[o.toUsize()]) {
+      cur.push(o);
+    }
+    o += 1;
+  }
+  // 2. children on a longest increasing run of the old order stay; the others are moved or created.
+  const stable = stableSet(source);
+  // Walk backwards; an id is the old index of a continued child, or -(j + 1) for a created one.
+  let j = next.length.toInt() - 1;
+  while (j >= 0) {
+    const sj = source[j.toUsize()];
+    const anchorId = j + 1 < next.length.toInt() ? idOf(source, j + 1) : -1000000000;
+    if (sj < 0) {
+      const to = anchorId == -1000000000 ? cur.length.toInt() : indexOfId(cur, anchorId);
+      out.push(Create(child(path, to), next[j.toUsize()]));
+      cur = insertAt(cur, to, idOf(source, j));
+    } else if (!stable[j.toUsize()]) {
+      const fromIdx = indexOfId(cur, sj);
+      cur = removeAt(cur, fromIdx);
+      const to = anchorId == -1000000000 ? cur.length.toInt() : indexOfId(cur, anchorId);
+      cur = insertAt(cur, to, sj);
+      if (fromIdx != to) {
+        out.push(Move(path, fromIdx, to));
+      }
+    }
+    j -= 1;
+  }
+  // 3. continued children are in place now: diff them at their final index.
+  j = 0;
+  while (j < next.length.toInt()) {
+    const sj = source[j.toUsize()];
+    if (sj >= 0) {
+      for (const p of diffNode(child(path, j), old[sj.toUsize()], next[j.toUsize()])) {
+        out.push(p);
+      }
+    }
+    j += 1;
+  }
+  return out;
+}
+
+function idOf(source: int[], j: int): int {
+  const s = source[j.toUsize()];
+  if (s >= 0) {
+    return s;
+  }
+  return -(j + 1);
+}
+
+function indexOfId(ids: int[], id: int): int {
+  let i = 0;
+  while (i < ids.length.toInt()) {
+    if (ids[i.toUsize()] == id) {
+      return i;
+    }
+    i += 1;
+  }
+  return -1;
+}
+
+function insertAt(xs: int[], index: int, v: int): int[] {
+  const i = index.toUsize();
+  return xs.slice(0, i).concat([v]).concat(xs.slice(i, xs.length));
+}
+
+function removeAt(xs: int[], index: int): int[] {
+  const i = index.toUsize();
+  return xs.slice(0, i).concat(xs.slice(i + 1, xs.length));
+}
+
+// stableSet(source) -- for each position, true when it is on a longest increasing subsequence of the non-negative entries.
+function stableSet(source: int[]): bool[] {
+  const n = source.length;
+  let stable: bool[] = [];
+  for (const s of source) {
+    stable.push(false);
+  }
+  // tails[k] = position (in `source`) of the smallest tail of an increasing subsequence of length k + 1
+  let tails: int[] = [];
+  let prev: int[] = [];
+  let p = 0;
+  while (p < n.toInt()) {
+    const v = source[p.toUsize()];
+    if (v < 0) {
+      prev.push(-1);
+      p += 1;
+      continue;
+    }
+    let lo = 0;
+    let hi = tails.length.toInt();
+    while (lo < hi) {
+      const mid = (lo + hi) / 2;
+      if (source[tails[mid.toUsize()].toUsize()] < v) {
+        lo = mid + 1;
+      } else {
+        hi = mid;
+      }
+    }
+    prev.push(lo > 0 ? tails[(lo - 1).toUsize()] : -1);
+    if (lo == tails.length.toInt()) {
+      tails.push(p);
+    } else {
+      tails[lo.toUsize()] = p;
+    }
+    p += 1;
+  }
+  let at = tails.length > 0 ? tails[tails.length - 1] : -1;
+  while (at >= 0) {
+    stable[at.toUsize()] = true;
+    at = prev[at.toUsize()];
+  }
+  return stable;
+}

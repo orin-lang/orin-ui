@@ -1,0 +1,7 @@
+[package]
+name = "kit-gallery"
+version = "0.1.0"
+entry = "src/main.or"
+
+[dependencies]
+orin-ui = { path = "../.." }

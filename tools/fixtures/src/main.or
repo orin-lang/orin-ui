@@ -1,0 +1,137 @@
+// Prints one JSON line per scenario for client/test/client.test.js: the messages the server would send for a sequence of
+// screens, and the HTML each screen must have once the client applied them. Run by tools/test-client.sh.
+import { exit } from "std:process";
+import {
+  Dom, dElement, dKeyed, dText, domAttr, diff, apply, renderHtml, mountMessage, patchMessage,
+  jsonQuote, dumpDom,
+} from "orin-ui";
+
+function li(key: string, label: string): Dom {
+  return dKeyed("li", key, [], [dText(label)]);
+}
+
+function ul(items: Dom[]): Dom[] {
+  return [dElement("ul", [domAttr("class", "list")], items)];
+}
+
+// One scenario: the screens in order. The first is sent as a `mount`, each later one as the patch from the previous screen.
+function scenario(name: string, screens: Dom[][]): string {
+  let frames: string[] = [];
+  let prev: Dom[] = [];
+  let i = 0;
+  for (const s of screens) {
+    const message = i == 0 ? mountMessage(s) : patchMessage(diff(prev, s));
+    // the reference applier must agree with the diff before the browser is involved
+    if (i > 0) {
+      const applied = apply(prev, diff(prev, s));
+      if (dumpDom(applied.unwrap()) != dumpDom(s)) {
+        console.error("reference applier disagrees in " + name);
+        exit(1);
+      }
+    }
+    frames.push("{\"msg\":" + jsonQuote(message) + ",\"html\":" + jsonQuote(renderHtml(s)) + "}");
+    prev = s;
+    i += 1;
+  }
+  return "{\"name\":" + jsonQuote(name) + ",\"frames\":[" + frames.join(",") + "]}";
+}
+
+function next(seed: int): int {
+  return (seed * 1103515245 + 12345) % 2147483648;
+}
+
+function randomItems(seed: int, size: int): Dom[] {
+  let s = seed;
+  let out: Dom[] = [];
+  let used: bool[] = [false, false, false, false, false, false, false, false, false, false];
+  let i = 0;
+  while (i < size) {
+    s = next(s);
+    const k = s / 7 % 10;
+    s = next(s);
+    const t = s / 5 % 3;
+    if (!used[k.toUsize()]) {
+      used[k.toUsize()] = true;
+      out.push(li("k" + k.toString(), "text <" + t.toString() + "> & \"q\""));
+    }
+    i += 1;
+  }
+  return out;
+}
+
+function main(): void {
+  console.log(
+    scenario("text", [[dElement("p", [], [dText("a")])], [dElement("p", [], [dText("b<c>")])]]),
+  );
+  console.log(
+    scenario(
+      "attributes",
+      [
+        [
+          dElement(
+            "a",
+            [domAttr("href", "/1"), domAttr("class", "x"), domAttr("disabled", "")],
+            [dText("go")],
+          ),
+        ],
+        [dElement("a", [domAttr("href", "/2"), domAttr("title", "t\"q")], [dText("go")])],
+        [dElement("a", [domAttr("href", "/2")], [dText("go")])],
+      ],
+    ),
+  );
+  console.log(
+    scenario(
+      "replace",
+      [
+        [dElement("div", [], [dText("a")]), dText("tail")],
+        [dElement("span", [], [dText("a")]), dElement("i", [], [])],
+        [dText("only text")],
+        [],
+      ],
+    ),
+  );
+  console.log(
+    scenario(
+      "keyed",
+      [
+        ul([li("a", "A"), li("b", "B"), li("c", "C"), li("d", "D")]),
+        ul([li("b", "B"), li("c", "C"), li("d", "D"), li("a", "A")]),
+        ul([li("d", "D"), li("x", "X"), li("b", "B2")]),
+        ul([]),
+        ul([li("q", "Q")]),
+      ],
+    ),
+  );
+  console.log(
+    scenario(
+      "events-marker",
+      [
+        [dElement("button", [domAttr("data-ou-on", "click")], [dText("go")])],
+        [dElement("button", [domAttr("data-ou-on", "click input")], [dText("go")])],
+        [dElement("button", [], [dText("go")])],
+      ],
+    ),
+  );
+  console.log(
+    scenario(
+      "unicode",
+      [
+        [dElement("p", [], [dText("日本語 ✓")])],
+        [dElement("p", [domAttr("title", "é")], [dText("ñ \n line2")])],
+      ],
+    ),
+  );
+  let seed = 7;
+  let n = 0;
+  while (n < 25) {
+    let screens: Dom[][] = [];
+    let k = 0;
+    while (k < 6) {
+      seed = next(seed);
+      screens.push(ul(randomItems(seed, seed / 11 % 10)));
+      k += 1;
+    }
+    console.log(scenario("random-" + n.toString(), screens));
+    n += 1;
+  }
+}

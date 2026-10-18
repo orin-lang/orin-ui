@@ -1,0 +1,88 @@
+// A backend in sixty lines: the same view rendered as Markdown. It implements `Renderer` and nothing else is needed to plug it
+// into the runtime: the view, the diff and the program do not know it exists.
+//
+// A backend sees the `Dom` (a plain tree of elements and text) and, for updates, the patches from the previous tree. This one
+// is stateless like the HTML backend: `update` renders the new tree again. A backend that keeps a screen (a terminal, a native
+// widget tree) would apply `patches` to its widgets instead; see docs/design.md, "Writing a backend".
+import { Dom, DElement, DText, DomAttr, Patch, Renderer, attrValue } from "orin-ui";
+
+export class MarkdownRenderer implements Renderer {
+  constructor() {}
+  name(): string {
+    return "markdown";
+  }
+  mount(roots: Dom[]): string {
+    return blocks(roots);
+  }
+  update(before: Dom[], after: Dom[], patches: Patch[]): string {
+    return blocks(after);
+  }
+}
+
+function blocks(nodes: Dom[]): string {
+  return nodes.map(n => block(n)).filter(s => s.length > 0).join("\n\n");
+}
+
+function inline(nodes: Dom[]): string {
+  return nodes.map(n => inlineNode(n)).join("");
+}
+
+function inlineNode(n: Dom): string {
+  return match (n) {
+    DText(s) => s,
+    DElement(tag, key, attrs, children) => inlineElement(tag, attrs, children),
+  };
+}
+
+function inlineElement(tag: string, attrs: DomAttr[], children: Dom[]): string {
+  const inner = inline(children);
+  if (tag == "strong" || tag == "b") {
+    return "**" + inner + "**";
+  }
+  if (tag == "em" || tag == "i") {
+    return "*" + inner + "*";
+  }
+  if (tag == "code") {
+    return "`" + inner + "`";
+  }
+  if (tag == "a") {
+    return "[" + inner + "](" + attrValue(attrs, "href").unwrapOr("") + ")";
+  }
+  return inner;
+}
+
+function block(n: Dom): string {
+  return match (n) {
+    DText(s) => s,
+    DElement(tag, key, attrs, children) => blockElement(tag, children),
+  };
+}
+
+function blockElement(tag: string, children: Dom[]): string {
+  if (tag == "h1") {
+    return "# " + inline(children);
+  }
+  if (tag == "h2") {
+    return "## " + inline(children);
+  }
+  if (tag == "ul") {
+    return children.map(c => "- " + inline(childrenOf(c))).join("\n");
+  }
+  if (tag == "ol") {
+    return children.map(c => "1. " + inline(childrenOf(c))).join("\n");
+  }
+  if (tag == "p") {
+    return inline(children);
+  }
+  if (tag == "div" || tag == "section") {
+    return blocks(children);
+  }
+  return inline(children);
+}
+
+function childrenOf(n: Dom): Dom[] {
+  return match (n) {
+    DText(s) => [DText(s)],
+    DElement(tag, key, attrs, children) => children,
+  };
+}

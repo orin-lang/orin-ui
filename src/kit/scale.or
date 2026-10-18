@@ -1,0 +1,128 @@
+// Number helpers for the charts: scales, nice axis ticks and number formatting, all on integers.
+//
+// Chart geometry is computed in *tenths* of a drawing unit (an `int` 1234 is 123.4), so that no floating-point text formatting is
+// needed and every coordinate is exact and deterministic. `tenths` writes such a number as SVG text.
+
+// A linear map from the data domain [d0, d1] to the range [r0, r1] (range in tenths of a unit).
+export type Scale = { d0: int; d1: int; r0: int; r1: int; };
+
+// scaleTo(s, v) -- v mapped into the range, in tenths. A domain of zero width maps everything to the middle of the range; values
+// outside the domain are clamped to the ends of the range.
+export function scaleTo(s: Scale, v: int): int {
+  if (s.d1 == s.d0) {
+    return (s.r0 + s.r1) / 2;
+  }
+  let x = v;
+  if (s.d0 < s.d1) {
+    x = v < s.d0 ? s.d0 : v > s.d1 ? s.d1 : v;
+  } else {
+    x = v < s.d1 ? s.d1 : v > s.d0 ? s.d0 : v;
+  }
+  return s.r0 + (x - s.d0) * (s.r1 - s.r0) / (s.d1 - s.d0);
+}
+
+// tenths(n) -- 1234 as "123.4", -5 as "-0.5", 70 as "7".
+export function tenths(n: int): string {
+  const neg = n < 0;
+  const a = neg ? 0 - n : n;
+  const whole = a / 10;
+  const frac = a % 10;
+  const body = frac == 0 ? whole.toString() : whole.toString() + "." + frac.toString();
+  return neg ? "-" + body : body;
+}
+
+function pow10Below(n: int): int {
+  let p: int = 1;
+  while (p * 10 <= n) {
+    p = p * 10;
+  }
+  return p;
+}
+
+// niceStep(max, target) -- a step of 1, 2 or 5 times a power of ten such that about `target` steps cover [0, max].
+export function niceStep(max: int, target: int): int {
+  const t = target < 1 ? 1 : target;
+  const raw = max <= 0 ? 1 : (max + t - 1) / t;
+  const base = pow10Below(raw < 1 ? 1 : raw);
+  if (raw <= base) {
+    return base;
+  }
+  if (raw <= 2 * base) {
+    return 2 * base;
+  }
+  if (raw <= 5 * base) {
+    return 5 * base;
+  }
+  return 10 * base;
+}
+
+// niceTicks(max, target) -- the axis ticks 0, step, 2*step ... up to the first one that is at least `max` (at least one step).
+// For no data (max <= 0) the axis runs 0..4.
+export function niceTicks(max: int, target: int): int[] {
+  const step = niceStep(max, target);
+  let ticks: int[] = [0];
+  const top = max <= 0 ? step * 4 : max;
+  let v: int = 0;
+  while (v < top) {
+    v += step;
+    ticks.push(v);
+  }
+  return ticks;
+}
+
+// compactNumber(n) -- 950 as "950", 1200 as "1.2k", 25000 as "25k", 3400000 as "3.4M". Negative numbers keep their sign.
+export function compactNumber(n: int): string {
+  if (n < 0) {
+    return "-" + compactNumber(0 - n);
+  }
+  if (n < 1000) {
+    return n.toString();
+  }
+  if (n < 1000000) {
+    return scaled(n, 1000, "k");
+  }
+  if (n < 1000000000) {
+    return scaled(n, 1000000, "M");
+  }
+  return scaled(n, 1000000000, "G");
+}
+
+function scaled(n: int, unit: int, suffix: string): string {
+  const whole = n / unit;
+  if (whole >= 100) {
+    return whole.toString() + suffix;
+  }
+  const tenth = n % unit * 10 / unit;
+  if (whole >= 10 || tenth == 0) {
+    return whole.toString() + suffix;
+  }
+  return whole.toString() + "." + tenth.toString() + suffix;
+}
+
+// percent(part, whole) -- the whole-number percentage, 0 when whole is 0.
+export function percent(part: int, whole: int): int {
+  if (whole <= 0) {
+    return 0;
+  }
+  return part * 100 / whole;
+}
+
+// maxOf(xs) -- the largest value, 0 for none.
+export function maxOf(xs: int[]): int {
+  let m: int = 0;
+  for (const x of xs) {
+    if (x > m) {
+      m = x;
+    }
+  }
+  return m;
+}
+
+// sumOf(xs) -- the sum.
+export function sumOf(xs: int[]): int {
+  let s: int = 0;
+  for (const x of xs) {
+    s += x;
+  }
+  return s;
+}

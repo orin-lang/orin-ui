@@ -1,0 +1,47 @@
+// The todo view, written in OX.
+import ox from "./ui";
+import {
+  Node, Program, cls, key, attr, value, checked, disabled, classIf, onClick, onInput, onChange,
+  onSubmit,
+} from "orin-ui";
+import {
+  Model, Msg, Todo, Filter, All, Active, Done, Draft, Add, Toggle, Remove, SetFilter, ClearDone,
+  init, update, visible, remaining,
+} from "./model";
+
+function Item(t: Todo): Node<Msg> {
+  return <li attrs={Some([key(t.id.toString()), classIf("item", "done", t.done)])}>
+    <label>
+      <input attrs={Some([attr("type", "checkbox"), checked(t.done), onChange((v) => Toggle(t.id))])} />
+      <span>{t.title}</span>
+    </label>
+    <button attrs={Some([cls("remove"), onClick(Remove(t.id))])}>x</button>
+  </li>;
+}
+
+function FilterButton(label: string, f: Filter, current: Filter): Node<Msg> {
+  return <button attrs={Some([classIf("filter", "selected", f == current), onClick(SetFilter(f))])}>{label}</button>;
+}
+
+export function view(m: Model): Node<Msg> {
+  const n = remaining(m);
+  return <div attrs={Some([cls("todoapp")])}>
+    <h1>todos</h1>
+    <form attrs={Some([onSubmit(Add)])}>
+      <input attrs={Some([attr("placeholder", "What needs to be done?"), value(m.draft), onInput((v) => Draft(v))])} />
+      <button attrs={Some([attr("type", "submit"), disabled(m.draft.trim().length == 0)])}>Add</button>
+    </form>
+    <ul>{visible(m).map(t => Item(t))}</ul>
+    <p attrs={Some([cls("count")])}>{n.toString()} left</p>
+    <div attrs={Some([cls("filters")])}>
+      <FilterButton label="All" f={All} current={m.filter} />
+      <FilterButton label="Active" f={Active} current={m.filter} />
+      <FilterButton label="Done" f={Done} current={m.filter} />
+      <button attrs={Some([onClick(ClearDone)])}>Clear done</button>
+    </div>
+  </div>;
+}
+
+export function program(): Program<Model, Msg> {
+  return Program<Model, Msg> { init: init(), update: update, view: view };
+}

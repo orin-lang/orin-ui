@@ -1,0 +1,551 @@
+import { assert, assertEq, assertEqString } from "std:test";
+import { ValueObject, ValueArray, ValueString, ValueBool, ValueNull, JsonMember } from "std:json";
+import { numberFromInt } from "std:json/number";
+import { ValueNumber } from "std:json";
+import { Node, resolve, toDom, renderHtml, messageAt } from "../src";
+import {
+  Scale, scaleTo, tenths, niceStep, niceTicks, compactNumber, percent, maxOf, sumOf, Tone,
+  ToneSuccess, ToneDanger, ToneNeutral, ButtonPrimary, ButtonDanger, ButtonSecondary, Icon, Badge,
+  StatusPill, KeyValue, KeyValueGroup, pair, textPair, CodeBlock, JsonBlock, JsonText, Banner,
+  Toast, Table, column, numberColumn, sortableColumn, tableRow, unsorted, SortState, linkTab,
+  buttonTab, Tabs, Button, SmallButton, IconButton, SubmitButton, LinkButton, Form, TextField,
+  SelectField, choice, Toggle, Dialog, ConfirmDialog, ThemeToggle, Menu, PostForm, AppShell,
+  Sidebar, TopBar, PageHeader, Card, Grid, EmptyState, Loading, NavItem, NavSection, Crumb,
+  ChartSeries, series, ChartSpec, LineChart, AreaChart, BarChart, Sparkline, StatCard, LatencyBar,
+  chartDescription, plotOf, pointX, Legend,
+} from "../src";
+
+type Msg = Go | Sort(string) | Close | Submit(string);
+
+function html(n: Node<Msg>): string {
+  return renderHtml(toDom<Msg>(resolve<Msg>(n)));
+}
+
+function click(n: Node<Msg>, path: int[]): Option<Msg> {
+  return messageAt<Msg>(resolve<Msg>(n), path, "click", "");
+}
+
+function isGo(m: Option<Msg>): bool {
+  return m.isSome()
+      && match (m.unwrap()) {
+        Go => true,
+        _ => false,
+      };
+}
+
+function fmt(v: int): string {
+  return v.toString();
+}
+
+function spec(labels: string[], values: int[]): ChartSpec {
+  return ChartSpec {
+    title: "Runs per hour",
+    labels: labels,
+    ticks: labels,
+    series: [series("runs", 0, values)],
+    height: 200,
+    yFormat: fmt,
+    yMax: 0,
+    unit: "runs",
+    empty: "No runs",
+  };
+}
+
+// ------------------------------------------------------------------ scales and numbers
+
+@Test
+function scalesMapTheDomainToTheRangeAndClamp(): void {
+  const s = Scale { d0: 0, d1: 100, r0: 2000, r1: 200 }; // y axis: larger values are higher (smaller y)
+  assertEq(scaleTo(s, 0), 2000, "bottom");
+  assertEq(scaleTo(s, 100), 200, "top");
+  assertEq(scaleTo(s, 50), 1100, "middle");
+  assertEq(scaleTo(s, 500), 200, "above the domain is clamped");
+  assertEq(scaleTo(s, -5), 2000, "below the domain is clamped");
+  assertEq(
+    scaleTo(Scale { d0: 5, d1: 5, r0: 0, r1: 100 }, 5),
+    50,
+    "a domain of zero width maps to the middle",
+  );
+}
+
+@Test
+function tenthsWritesFixedPoint(): void {
+  assertEqString(tenths(1234), "123.4", "fraction");
+  assertEqString(tenths(70), "7", "whole");
+  assertEqString(tenths(5), "0.5", "below one");
+  assertEqString(tenths(-5), "-0.5", "negative");
+  assertEqString(tenths(0), "0", "zero");
+}
+
+@Test
+function niceTicksAreRoundAndCoverTheData(): void {
+  assertEq(niceStep(10, 4), 5, "10 in about 4 steps");
+  assertEq(niceStep(100, 4), 50, "100");
+  assertEq(niceStep(1, 4), 1, "tiny");
+  assertEq(niceStep(0, 4), 1, "nothing");
+  assertEq(niceStep(7300, 4), 2000, "7300");
+  const t = niceTicks(37, 4);
+  assertEq(t[0], 0, "starts at zero");
+  assertEq(t[t.length - 1], 40, "ends at or above the maximum");
+  assertEq(t.length.toInt(), 5, "0,10,20,30,40");
+  const empty = niceTicks(0, 4);
+  assertEq(empty[empty.length - 1], 4, "no data: 0..4");
+  const one = niceTicks(1, 4);
+  assertEq(one.length.toInt(), 2, "0 and 1");
+}
+
+@Test
+function compactNumbersAreShort(): void {
+  assertEqString(compactNumber(0), "0", "zero");
+  assertEqString(compactNumber(950), "950", "below a thousand");
+  assertEqString(compactNumber(1200), "1.2k", "thousands");
+  assertEqString(compactNumber(1000), "1k", "round thousand");
+  assertEqString(compactNumber(25000), "25k", "tens of thousands");
+  assertEqString(compactNumber(3400000), "3.4M", "millions");
+  assertEqString(compactNumber(-1500), "-1.5k", "negative");
+  assertEq(percent(1, 4), 25, "percent");
+  assertEq(percent(1, 0), 0, "percent of nothing");
+  assertEq(maxOf([]), 0, "max of nothing");
+  assertEq(sumOf([1, 2, 3]), 6, "sum");
+}
+
+// ------------------------------------------------------------------ escaping and structure
+
+@Test
+function textIsEscapedEverywhere(): void {
+  const evil = "<img src=x onerror=alert(1)>";
+  const nodes: Node<Msg>[] = [
+    Badge<Msg>(evil, ToneNeutral),
+    StatusPill<Msg>(evil),
+    KeyValue<Msg>([textPair<Msg>(evil, evil)]),
+    CodeBlock<Msg>(evil),
+    Banner<Msg>(ToneDanger, evil, evil, []),
+    Button<Msg>(evil, ButtonPrimary, Go),
+    TextField<Msg>("n", evil, evil, evil, evil),
+    Card<Msg>(evil, [], [Loading<Msg>(evil)]),
+    EmptyState<Msg>("apps", evil, evil, []),
+    PageHeader<Msg>(evil, evil, [Crumb { label: evil, href: "/x" }], []),
+    JsonText<Msg>("{\"" + evil + "\":\"" + evil + "\"}"),
+  ];
+  for (const n of nodes) {
+    const h = html(n);
+    assert(!h.includes("<img"), "no element from text: " + h);
+    assert(h.includes("&lt;img"), "escaped: " + h);
+  }
+}
+
+@Test
+function urlsInLinksAreSanitised(): void {
+  const h = html(LinkButton<Msg>("x", ButtonPrimary, "javascript:alert(1)"));
+  assert(!h.includes("javascript:"), h);
+  const nav = Sidebar<Msg>(
+    Badge<Msg>("brand", ToneNeutral),
+    [
+      NavSection {
+        title: "Main",
+        items: [
+          NavItem {
+            label: "Apps",
+            href: "javascript:alert(1)",
+            icon: "apps",
+            active: false,
+            badge: "",
+          },
+        ],
+      },
+    ],
+    CodeBlock<Msg>("v"),
+  );
+  assert(!html(nav).includes("javascript:"), "sidebar links too");
+}
+
+@Test
+function unknownIconsRenderEmptyPaths(): void {
+  const h = html(Icon<Msg>("no-such-icon"));
+  assert(h.includes("<svg") && h.includes("aria-hidden=\"true\""), h);
+}
+
+// ------------------------------------------------------------------ components
+
+@Test
+function statusPillsCarryTextAndAnIcon(): void {
+  const ok = html(StatusPill<Msg>("succeeded"));
+  assert(ok.includes("ou-tone-success") && ok.includes("<svg") && ok.includes("succeeded"), ok);
+  const bad = html(StatusPill<Msg>("failed"));
+  assert(bad.includes("ou-tone-danger") && bad.includes("failed"), bad);
+  assert(html(StatusPill<Msg>("running")).includes("ou-tone-info"), "running");
+  assert(html(StatusPill<Msg>("stopped")).includes("ou-tone-neutral"), "stopped");
+  assert(
+    html(StatusPill<Msg>("whatever")).includes("ou-tone-neutral"),
+    "unknown words are neutral",
+  );
+}
+
+@Test
+function buttonsSendTheirMessage(): void {
+  const b = Button<Msg>("Run", ButtonPrimary, Go);
+  assert(isGo(click(b, [0])), "click");
+  assert(html(b).includes("ou-btn-primary"), "kind");
+  assert(html(Button<Msg>("x", ButtonDanger, Go)).includes("ou-btn-danger"), "danger");
+  assert(html(SmallButton<Msg>("x", ButtonSecondary, Go)).includes("ou-btn-sm"), "small");
+  const ib = html(IconButton<Msg>("trash", "Delete", ButtonDanger, Go));
+  assert(ib.includes("aria-label=\"Delete\"") && ib.includes("<svg"), ib);
+  assert(html(SubmitButton<Msg>("Save", ButtonPrimary)).includes("type=\"submit\""), "submit");
+}
+
+@Test
+function tablesDrawSortArrowsAndEmptyStates(): void {
+  const cols = [
+    sortableColumn("name", "Name"),
+    numberColumn("runs", "Runs"),
+    column("kind", "Kind"),
+  ];
+  const rows = [
+    tableRow<Msg>("a", [CodeBlock<Msg>("a"), CodeBlock<Msg>("1"), CodeBlock<Msg>("job")]),
+    tableRow<Msg>("b", [CodeBlock<Msg>("b"), CodeBlock<Msg>("2"), CodeBlock<Msg>("job")]),
+  ];
+  const t = Table<Msg>(
+    cols,
+    rows,
+    SortState { key: "runs", desc: true },
+    k => Sort(k),
+    CodeBlock<Msg>("none"),
+  );
+  const h = html(t);
+  assert(h.includes("<thead><tr>") && h.includes("<tbody>"), "thead and tbody: " + h);
+  assert(h.includes("aria-sort=\"descending\""), "the sorted column says so");
+  assert(h.includes("aria-sort=\"none\""), "the other sortable column too");
+  assert(h.includes("class=\"ou-num\""), "numbers are right-aligned");
+  assertEq(h.split("<tr").length.toInt(), 4, "header row and two body rows");
+  // the header button of the first column sends Sort("name")
+  const m = click(t, [0, 0, 0, 0, 0, 0]);
+  assert(
+    m.isSome()
+        && match (m.unwrap()) {
+          Sort(k) => k == "name",
+          _ => false,
+        },
+    "sort message",
+  );
+  const e = html(
+    Table<Msg>(cols, [], unsorted(), k => Sort(k), EmptyState<Msg>("apps", "Nothing here", "", [])),
+  );
+  assert(
+    e.includes("Nothing here") && !e.includes("<table"),
+    "empty state replaces the table: " + e,
+  );
+}
+
+@Test
+function tabsAreLinksOrButtons(): void {
+  const t = Tabs<Msg>([
+    linkTab<Msg>("Overview", "/apps/x", true, ""),
+    buttonTab<Msg>("Runs", false, "12", Go),
+  ]);
+  const h = html(t);
+  assert(h.includes("<a ") && h.includes("href=\"/apps/x\""), "link tab");
+  assert(
+    h.includes("aria-selected=\"true\"") && h.includes("aria-selected=\"false\""),
+    "selection",
+  );
+  assert(h.includes("ou-tab-count"), "count");
+  assert(isGo(click(t, [0, 1])), "button tab sends its message");
+}
+
+@Test
+function keyValueGroupsAndJson(): void {
+  const h = html(
+    KeyValueGroup<Msg>(
+      "Limits",
+      [textPair<Msg>("Memory", "64 MiB"), pair<Msg>("State", Badge<Msg>("on", ToneSuccess))],
+    ),
+  );
+  assert(h.includes("<dl") && h.includes("<dt>Memory</dt>") && h.includes("<dd>64 MiB</dd>"), h);
+  const j = html(
+    JsonBlock<Msg>(
+      ValueObject([
+        JsonMember { key: "a", value: ValueNumber(numberFromInt(1)) },
+        JsonMember { key: "b", value: ValueArray([ValueString("x"), ValueBool(true), ValueNull]) },
+        JsonMember { key: "c", value: ValueObject([]) },
+      ]),
+    ),
+  );
+  assert(
+    j.includes("ou-j-key")
+        && j.includes("ou-j-num")
+        && j.includes("ou-j-str")
+        && j.includes("ou-j-lit"),
+    j,
+  );
+  assert(j.includes("&quot;a&quot;"), "keys are quoted: " + j);
+  assert(j.includes("{}"), "empty object");
+  const bad = html(JsonText<Msg>("not json"));
+  assert(bad.includes("not json") && bad.includes("<pre"), "invalid JSON is shown as text");
+}
+
+@Test
+function bannersAndToastsAnnounceThemselves(): void {
+  assert(
+    html(Banner<Msg>(ToneDanger, "Failed", "x", [])).includes("role=\"alert\""),
+    "errors are alerts",
+  );
+  assert(
+    html(Banner<Msg>(ToneSuccess, "Done", "x", [])).includes("role=\"status\""),
+    "success is a status",
+  );
+  const t = Toast<Msg>(ToneSuccess, "Saved", "/runs/x", Close);
+  assert(html(t).includes("aria-live=\"polite\"") && html(t).includes("href=\"/runs/x\""), "toast");
+  assert(
+    match (click(t, [0, 0, 3]).unwrap()) {
+      Close => true,
+      _ => false,
+    },
+    "dismiss sends its message",
+  );
+}
+
+@Test
+function dialogsAreModalAndLabelled(): void {
+  const d = Dialog<Msg>(
+    "Delete app",
+    [CodeBlock<Msg>("sure?")],
+    [Button<Msg>("OK", ButtonPrimary, Go)],
+    Close,
+  );
+  const h = html(d);
+  assert(
+    h.includes("role=\"dialog\"")
+        && h.includes("aria-modal=\"true\"")
+        && h.includes("aria-label=\"Delete app\""),
+    h,
+  );
+  assert(h.includes("data-ou-dismiss"), "Escape target");
+  assert(
+    match (click(d, [0, 0]).unwrap()) {
+      Close => true,
+      _ => false,
+    },
+    "the backdrop closes it",
+  );
+  const c = ConfirmDialog<Msg>("Sure?", [], "Delete", true, Go, Close);
+  assert(isGo(click(c, [0, 1, 2, 1])), "confirm button sends the confirm message");
+  assert(html(c).includes("ou-btn-danger"), "danger confirm");
+}
+
+@Test
+function formsSubmitTheirFields(): void {
+  const f = Form<Msg>(
+    v => Submit(v),
+    [
+      TextField<Msg>("queue", "Queue", "orders", "", "name"),
+      SelectField<Msg>("level", "Level", [choice("", "any"), choice("warn", "warn")], "warn"),
+      SubmitButton<Msg>("Go", ButtonPrimary),
+    ],
+  );
+  const h = html(f);
+  assert(h.includes("data-ou-on=\"submit\""), h);
+  assert(h.includes("name=\"queue\"") && h.includes("value=\"orders\""), "controlled value");
+  assert(h.includes("<option value=\"warn\" selected=\"\">warn</option>"), "current option: " + h);
+  const m = messageAt<Msg>(resolve<Msg>(f), [], "submit", "queue=orders");
+  assert(m.isNone(), "the root itself is not an element");
+}
+
+@Test
+function togglesAreSwitches(): void {
+  const on = html(Toggle<Msg>("Live", true, Go));
+  assert(
+    on.includes("role=\"switch\"")
+        && on.includes("aria-checked=\"true\"")
+        && on.includes("ou-toggle on"),
+    on,
+  );
+  assert(html(Toggle<Msg>("Live", false, Go)).includes("aria-checked=\"false\""), "off");
+  assert(html(ThemeToggle<Msg>()).includes("data-ou-theme-toggle"), "theme toggle");
+}
+
+@Test
+function theShellHasASidebarATopBarAndMainContent(): void {
+  const sidebar = Sidebar<Msg>(
+    Badge<Msg>("Orbit", ToneNeutral),
+    [
+      NavSection {
+        title: "Main",
+        items: [
+          NavItem { label: "Overview", href: "/", icon: "overview", active: true, badge: "" },
+          NavItem { label: "Apps", href: "/apps", icon: "apps", active: false, badge: "3" },
+        ],
+      },
+    ],
+    CodeBlock<Msg>("v1"),
+  );
+  const h = html(AppShell<Msg>(sidebar, TopBar<Msg>([], []), Grid<Msg>(3, [])));
+  assert(
+    h.includes("<aside class=\"ou-sidebar\">")
+        && h.includes("<header class=\"ou-topbar\">")
+        && h.includes("<main"),
+    h,
+  );
+  assert(h.includes("aria-current=\"page\""), "the active item is marked");
+  assert(h.includes("ou-nav-badge"), "badge");
+  assert(h.includes("ou-cols-3"), "grid");
+  assert(
+    html(Grid<Msg>(99, [])).includes("ou-cols-6") && html(Grid<Msg>(0, [])).includes("ou-cols-1"),
+    "columns are clamped",
+  );
+}
+
+// ------------------------------------------------------------------ charts
+
+@Test
+function aLineChartHasAxesGridlinesTooltipsAndADescription(): void {
+  const c = spec(["10:00", "11:00", "12:00"], [3, 9, 6]);
+  const h = html(LineChart<Msg>(c, false));
+  assert(h.includes("role=\"img\"") && h.includes("aria-labelledby"), "accessible");
+  assert(h.includes("<title id=\"c-runs-per-hour-t\">Runs per hour</title>"), "title: " + h);
+  assert(h.includes("<desc") && h.includes("runs: total 18, peak 9."), "description: " + h);
+  assert(
+    h.includes("class=\"ou-gridline\"") && h.includes("class=\"ou-axis\""),
+    "gridlines and the axis",
+  );
+  assert(h.includes("class=\"ou-ytick\"") && h.includes(">10<"), "y labels are text in HTML: " + h);
+  assert(h.includes("class=\"ou-xtick\"") && h.includes(">11:00<"), "x labels");
+  assert(h.includes("10:00: runs 3 runs") || h.includes("11:00: runs 9 runs"), "tooltips: " + h);
+  assert(h.includes("class=\"ou-line ou-stroke-0\""), "the line");
+  assert(!h.includes("ou-area"), "no area without fill");
+  assert(html(AreaChart<Msg>(c)).includes("ou-area ou-fill-0"), "area chart fills");
+}
+
+@Test
+function chartPointsSitInTheMiddleOfTheirSlots(): void {
+  const p = plotOf(200);
+  assertEq(pointX(p, 0, 5), 1000, "first of five slots of 2000");
+  assertEq(pointX(p, 4, 5), 9000, "last");
+  assertEq(pointX(p, 2, 5), 5000, "middle");
+  assertEq(pointX(p, 0, 1), 5000, "a single point is centred");
+  assertEq(pointX(p, 0, 0), 5000, "no points do not divide by zero");
+}
+
+@Test
+function aSinglePointIsADotNotALine(): void {
+  const h = html(LineChart<Msg>(spec(["10:00"], [5]), true));
+  assert(h.includes("ou-dot-mark ou-stroke-0"), "a dot");
+  assert(h.includes("x1=\"500\" x2=\"500\""), "in the middle of the plot: " + h);
+  assert(!h.includes("ou-line") && !h.includes("ou-area"), "no line or area from one point");
+}
+
+@Test
+function emptyChartsSayWhyAndKeepTheirAxes(): void {
+  const none = html(LineChart<Msg>(spec([], []), false));
+  assert(none.includes("No runs") && none.includes("ou-axis"), "no points: " + none);
+  assert(!none.includes("ou-line"), "nothing drawn");
+  const zeros = html(BarChart<Msg>(spec(["a", "b"], [0, 0])));
+  assert(zeros.includes("No runs"), "all zeros count as empty");
+  assert(!zeros.includes("<rect class=\"ou-bar"), "no bars");
+  assert(chartDescription(spec([], [])).endsWith("no data."), "description");
+}
+
+@Test
+function stackedBarsStackFromTheBaselineWithOneTooltipPerColumn(): void {
+  const c = ChartSpec {
+    title: "Runs",
+    labels: ["10:00", "11:00"],
+    ticks: ["10:00", ""],
+    series: [series("succeeded", 0, [10, 0]), series("failed", 3, [5, 2])],
+    height: 200,
+    yFormat: fmt,
+    yMax: 0,
+    unit: "runs",
+    empty: "No runs",
+  };
+  const h = html(BarChart<Msg>(c));
+  assert(h.includes("ou-bar ou-fill-0") && h.includes("ou-bar ou-fill-3"), "both series: " + h);
+  assertEq(
+    h.split("class=\"ou-bar ").length.toInt() - 1,
+    3,
+    "three segments: the zero value is not drawn",
+  );
+  assert(
+    h.includes("10:00: succeeded 10, failed 5 runs (total 15)"),
+    "column tooltip with the total: " + h,
+  );
+  assert(h.includes("class=\"ou-legend\"") && h.includes("failed"), "legend for two series");
+  assert(
+    h.includes("class=\"ou-ytick\"") && h.includes(">15<"),
+    "the axis covers the stacked total",
+  );
+  // an unlabelled tick is left out of the axis (the tooltip still has it)
+  assert(!h.includes("class=\"ou-xtick\" style=\"left:75%\""), "no tick label for an empty tick");
+  assert(
+    h.includes("class=\"ou-xtick\" style=\"left:25%\""),
+    "a labelled tick at its slot centre: " + h,
+  );
+}
+
+@Test
+function sparklinesHandleEmptyOneAndManyValues(): void {
+  assert(
+    html(Sparkline<Msg>([], 120, 32, 0, "none")).includes("ou-spark-empty"),
+    "empty: dashed baseline",
+  );
+  const one = html(Sparkline<Msg>([5], 120, 32, 0, "one"));
+  assert(one.includes("<circle") && !one.includes("ou-area"), "one value: a flat line and a dot");
+  const many = html(Sparkline<Msg>([1, 5, 3, 8], 120, 32, 1, "trend"));
+  assert(many.includes("ou-area ou-fill-1") && many.includes("aria-label=\"trend\""), many);
+  assert(
+    html(Sparkline<Msg>([0, 0, 0], 120, 32, 0, "flat")).includes("<path"),
+    "all zeros do not divide by zero",
+  );
+}
+
+@Test
+function statCardsAndLatencyBars(): void {
+  const h = html(StatCard<Msg>("Runs", "1.2k", "+12%", ToneSuccess, [1, 2, 3], "last 24 h"));
+  assert(
+    h.includes("ou-stat-value\">1.2k")
+        && h.includes("ou-delta ou-tone-success")
+        && h.includes("<svg"),
+    h,
+  );
+  const plain = html(StatCard<Msg>("Apps", "4", "", ToneNeutral, [], ""));
+  assert(!plain.includes("ou-delta") && !plain.includes("<svg"), "no delta, no sparkline");
+  const l = html(LatencyBar<Msg>(2, 9, 10, "2 ms", "9 ms"));
+  assert(l.includes("width:90%") && l.includes("width:20%"), l);
+  assert(l.includes("aria-label=\"median 2 ms, 95th percentile 9 ms\""), "accessible");
+  assert(html(LatencyBar<Msg>(5, 50, 10, "a", "b")).includes("width:100%"), "clamped");
+  assert(
+    html(LatencyBar<Msg>(0, 0, 0, "a", "b")).includes("width:0%"),
+    "max 0 does not divide by zero",
+  );
+}
+
+@Test
+function menusAreDetailsAndPostFormsArePlainForms(): void {
+  const m = html(
+    Menu<Msg>(
+      CodeBlock<Msg>("label"),
+      [PostForm<Msg>("/logout", [SubmitButton<Msg>("Sign out", ButtonPrimary)])],
+    ),
+  );
+  assert(
+    m.includes("<details class=\"ou-menu\">") && m.includes("<summary class=\"ou-menu-trigger\">"),
+    m,
+  );
+  assert(
+    m.includes("method=\"post\"") && m.includes("action=\"/logout\"") && !m.includes("data-ou-on"),
+    "a plain form, not a program event: " + m,
+  );
+}
+
+@Test
+function tableCellsWithoutAClassHaveNoEmptyClassAttribute(): void {
+  const t = html(
+    Table<Msg>(
+      [column("a", "A")],
+      [tableRow<Msg>("r", [CodeBlock<Msg>("x")])],
+      unsorted(),
+      k => Sort(k),
+      CodeBlock<Msg>("none"),
+    ),
+  );
+  assert(!t.includes("class=\"\""), t);
+}

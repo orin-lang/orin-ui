@@ -1,0 +1,228 @@
+// Layout components: the application shell, sidebar, page header, cards and grids.
+import { Node, Attr, el, text, cls, attr, href, key, classIf, nothing, when } from "../node";
+import { Icon } from "./icons";
+
+export type NavItem = { label: string; href: string; icon: string; active: bool; badge: string; };
+export type NavSection = { title: string; items: NavItem[]; };
+
+// A breadcrumb: `href` is "" for the current page.
+export type Crumb = { label: string; href: string; };
+
+// AppShell(sidebar, topbar, content) -- the page frame: a fixed sidebar on the left, a top bar and the content next to it. Below
+// 900px wide the sidebar shrinks to an icon rail (see the stylesheet), so the shell stays usable on a tablet.
+export function AppShell<M>(sidebar: Node<M>, topbar: Node<M>, content: Node<M>): Node<M> {
+  return el<M>(
+    "div",
+    [cls<M>("ou-shell")],
+    [
+      sidebar,
+      el<M>(
+        "div",
+        [cls<M>("ou-main")],
+        [topbar, el<M>("main", [cls<M>("ou-content"), attr<M>("id", "ou-content")], [content])],
+      ),
+    ],
+  );
+}
+
+function NavLink<M>(item: NavItem): Node<M> {
+  return el<M>(
+    "a",
+    [
+      key<M>(item.href),
+      classIf<M>("ou-nav-item", "active", item.active),
+      href<M>(item.href),
+      attr<M>("title", item.label),
+      item.active ? attr<M>("aria-current", "page") : attr<M>("data-ou-nav", "1"),
+    ],
+    [
+      Icon<M>(item.icon),
+      el<M>("span", [cls<M>("ou-nav-label")], [text<M>(item.label)]),
+      item.badge.length > 0
+          ? el<M>("span", [cls<M>("ou-nav-badge")], [text<M>(item.badge)])
+          : nothing<M>(),
+    ],
+  );
+}
+
+function NavGroup<M>(s: NavSection): Node<M> {
+  return el<M>(
+    "div",
+    [key<M>(s.title), cls<M>("ou-nav-group")],
+    [
+      s.title.length > 0
+          ? el<M>("div", [cls<M>("ou-nav-title")], [text<M>(s.title)])
+          : nothing<M>(),
+      el<M>("div", [cls<M>("ou-nav-items")], s.items.map(i => NavLink<M>(i))),
+    ],
+  );
+}
+
+// Sidebar(brand, sections, footer) -- the left column: a brand (logo and wordmark), grouped navigation links with the current one
+// marked (`aria-current="page"`), and a footer (a status, a version).
+export function Sidebar<M>(brand: Node<M>, sections: NavSection[], footer: Node<M>): Node<M> {
+  return el<M>(
+    "aside",
+    [cls<M>("ou-sidebar")],
+    [
+      el<M>("div", [cls<M>("ou-brand")], [brand]),
+      el<M>(
+        "nav",
+        [cls<M>("ou-nav"), attr<M>("aria-label", "Main")],
+        sections.map(s => NavGroup<M>(s)),
+      ),
+      el<M>("div", [cls<M>("ou-sidebar-footer")], [footer]),
+    ],
+  );
+}
+
+// TopBar(left, right) -- the bar above the content: context on the left, status and the user menu on the right.
+export function TopBar<M>(left: Node<M>[], right: Node<M>[]): Node<M> {
+  return el<M>(
+    "header",
+    [cls<M>("ou-topbar")],
+    [
+      el<M>("div", [cls<M>("ou-topbar-left")], left),
+      el<M>("div", [cls<M>("ou-topbar-right")], right),
+    ],
+  );
+}
+
+function Crumbs<M>(crumbs: Crumb[]): Node<M> {
+  let items: Node<M>[] = [];
+  let i: usize = 0;
+  while (i < crumbs.length) {
+    const c = crumbs[i];
+    if (i > 0) {
+      items.push(
+        el<M>("span", [cls<M>("ou-crumb-sep"), attr<M>("aria-hidden", "true")], [text<M>("/")]),
+      );
+    }
+    items.push(
+      c.href.length > 0
+          ? el<M>("a", [key<M>("c" + i.toString()), href<M>(c.href)], [text<M>(c.label)])
+          : el<M>(
+            "span",
+            [key<M>("c" + i.toString()), attr<M>("aria-current", "page")],
+            [text<M>(c.label)],
+          ),
+    );
+    i += 1;
+  }
+  return el<M>("nav", [cls<M>("ou-crumbs"), attr<M>("aria-label", "Breadcrumb")], items);
+}
+
+// PageHeader(title, description, crumbs, actions) -- the heading of a page with breadcrumbs above it and actions on the right.
+export function PageHeader<M>(
+  title: string,
+  description: string,
+  crumbs: Crumb[],
+  actions: Node<M>[],
+): Node<M> {
+  return el<M>(
+    "div",
+    [cls<M>("ou-page-header")],
+    [
+      crumbs.length > 0 ? Crumbs<M>(crumbs) : nothing<M>(),
+      el<M>(
+        "div",
+        [cls<M>("ou-page-title-row")],
+        [
+          el<M>(
+            "div",
+            [cls<M>("ou-page-titles")],
+            [
+              el<M>("h1", [cls<M>("ou-page-title")], [text<M>(title)]),
+              description.length > 0
+                  ? el<M>("p", [cls<M>("ou-page-desc")], [text<M>(description)])
+                  : nothing<M>(),
+            ],
+          ),
+          actions.length > 0 ? el<M>("div", [cls<M>("ou-page-actions")], actions) : nothing<M>(),
+        ],
+      ),
+    ],
+  );
+}
+
+// Card(title, actions, body) -- a bordered panel with an optional header (title left, actions right).
+export function Card<M>(title: string, actions: Node<M>[], body: Node<M>[]): Node<M> {
+  const header = title.length > 0 || actions.length > 0
+      ? el<M>(
+        "div",
+        [cls<M>("ou-card-header")],
+        [
+          el<M>("h2", [cls<M>("ou-card-title")], [text<M>(title)]),
+          actions.length > 0 ? el<M>("div", [cls<M>("ou-card-actions")], actions) : nothing<M>(),
+        ],
+      )
+      : nothing<M>();
+  return el<M>(
+    "section",
+    [cls<M>("ou-card")],
+    [header, el<M>("div", [cls<M>("ou-card-body")], body)],
+  );
+}
+
+// FlushCard -- a card whose body has no padding (a table that runs edge to edge).
+export function FlushCard<M>(title: string, actions: Node<M>[], body: Node<M>[]): Node<M> {
+  const header = title.length > 0 || actions.length > 0
+      ? el<M>(
+        "div",
+        [cls<M>("ou-card-header")],
+        [
+          el<M>("h2", [cls<M>("ou-card-title")], [text<M>(title)]),
+          actions.length > 0 ? el<M>("div", [cls<M>("ou-card-actions")], actions) : nothing<M>(),
+        ],
+      )
+      : nothing<M>();
+  return el<M>(
+    "section",
+    [cls<M>("ou-card")],
+    [header, el<M>("div", [cls<M>("ou-card-flush")], body)],
+  );
+}
+
+// Grid(columns, children) -- a CSS grid of 1 to 6 equal columns (collapsing to fewer on narrow screens), gap on the 8px grid.
+export function Grid<M>(columns: int, children: Node<M>[]): Node<M> {
+  const n = columns < 1 ? 1 : columns > 6 ? 6 : columns;
+  return el<M>("div", [cls<M>("ou-grid ou-cols-" + n.toString())], children);
+}
+
+// Stack(children) -- children one below the other with a 16px gap.
+export function Stack<M>(children: Node<M>[]): Node<M> {
+  return el<M>("div", [cls<M>("ou-stack")], children);
+}
+
+// Inline(children) -- children in a row with an 8px gap, wrapping.
+export function Inline<M>(children: Node<M>[]): Node<M> {
+  return el<M>("div", [cls<M>("ou-inline")], children);
+}
+
+// EmptyState(icon, title, text, actions) -- what to show instead of a list with nothing in it.
+export function EmptyState<M>(
+  icon: string,
+  title: string,
+  message: string,
+  actions: Node<M>[],
+): Node<M> {
+  return el<M>(
+    "div",
+    [cls<M>("ou-empty")],
+    [
+      el<M>("div", [cls<M>("ou-empty-icon")], [Icon<M>(icon)]),
+      el<M>("div", [cls<M>("ou-empty-title")], [text<M>(title)]),
+      message.length > 0 ? el<M>("p", [cls<M>("ou-empty-text")], [text<M>(message)]) : nothing<M>(),
+      actions.length > 0 ? el<M>("div", [cls<M>("ou-inline ou-center")], actions) : nothing<M>(),
+    ],
+  );
+}
+
+// Loading(label) -- a placeholder while something is fetched: a spinner and a label (announced politely).
+export function Loading<M>(label: string): Node<M> {
+  return el<M>(
+    "div",
+    [cls<M>("ou-loading"), attr<M>("role", "status"), attr<M>("aria-live", "polite")],
+    [el<M>("span", [cls<M>("ou-spinner"), attr<M>("aria-hidden", "true")], []), text<M>(label)],
+  );
+}

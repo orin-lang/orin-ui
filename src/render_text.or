@@ -1,0 +1,89 @@
+// Backend 3: text, for terminals and tests. It exists to show that the Dom and the patches are all a backend needs.
+import { Dom, DomAttr, DElement, DText, EVENTS_ATTR } from "./dom";
+import { Patch, Create, Remove, Replace, SetAttr, RemoveAttr, SetText, Move } from "./diff";
+
+// renderText(roots) -- an indented outline: one line per node, `tag#id.class name="value" [events]`, text in quotes.
+//   div.counter
+//     button [click]
+//       "-"
+export function renderText(roots: Dom[]): string {
+  let lines: string[] = [];
+  for (const n of roots) {
+    lines = lines.concat(outline(n, 0));
+  }
+  return lines.join("\n");
+}
+
+function indent(depth: int): string {
+  let s = "";
+  let i = 0;
+  while (i < depth) {
+    s += "  ";
+    i += 1;
+  }
+  return s;
+}
+
+function outline(node: Dom, depth: int): string[] {
+  return match (node) {
+    DText(s) => [indent(depth) + quote(s)],
+    DElement(tag, key, attrs, children) => outlineElement(tag, attrs, children, depth),
+  };
+}
+
+function outlineElement(tag: string, attrs: DomAttr[], children: Dom[], depth: int): string[] {
+  let head = indent(depth) + tag;
+  let events = "";
+  for (const a of attrs) {
+    if (a.name == "id") {
+      head += "#" + a.value;
+    } else if (a.name == "class") {
+      head += "." + a.value.split(" ").filter(c => c.length > 0).join(".");
+    } else if (a.name == EVENTS_ATTR) {
+      events = " [" + a.value + "]";
+    } else if (a.value.length == 0) {
+      head += " " + a.name;
+    } else {
+      head += " " + a.name + "=" + quote(a.value);
+    }
+  }
+  let lines: string[] = [head + events];
+  for (const c of children) {
+    lines = lines.concat(outline(c, depth + 1));
+  }
+  return lines;
+}
+
+function quote(s: string): string {
+  return "\"" + s.split("\\").join("\\\\").split("\"").join("\\\"").split("\n").join("\\n") + "\"";
+}
+
+function pathText(path: int[]): string {
+  return "/" + path.map(i => i.toString()).join("/");
+}
+
+function nodeText(n: Dom): string {
+  return match (n) {
+    DText(s) => quote(s),
+    DElement(tag, key, attrs, children) => "<" + tag + ">",
+  };
+}
+
+// patchText(patch) -- one line describing an operation.
+export function patchText(p: Patch): string {
+  return match (p) {
+    Create(path, node) => "create " + pathText(path) + " " + nodeText(node),
+    Remove(path) => "remove " + pathText(path),
+    Replace(path, node) => "replace " + pathText(path) + " " + nodeText(node),
+    SetAttr(path, name, value) => "attr " + pathText(path) + " " + name + "=" + quote(value),
+    RemoveAttr(path, name) => "unattr " + pathText(path) + " " + name,
+    SetText(path, text) => "text " + pathText(path) + " " + quote(text),
+    Move(parent, fromIdx, to) => "move " + pathText(parent) + " " + fromIdx.toString() + " -> "
+        + to.toString(),
+  };
+}
+
+// patchesText(patches) -- one line per operation.
+export function patchesText(patches: Patch[]): string {
+  return patches.map(p => patchText(p)).join("\n");
+}

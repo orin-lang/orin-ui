@@ -1,0 +1,59 @@
+// Vocabulary shared by the components: tones, button kinds and the CSS class names (see client/orin-ui-kit.css).
+//
+// Components never write colours. They put a class on an element; the stylesheet decides what it looks like in light and dark
+// mode. Colour is never the only carrier of meaning: statuses also carry a text label and an icon.
+
+// A semantic colour: what a badge, banner or delta means.
+export type Tone = ToneNeutral | ToneSuccess | ToneDanger | ToneWarning | ToneInfo | ToneAccent;
+
+export type ButtonKind = ButtonPrimary | ButtonSecondary | ButtonDanger | ButtonGhost;
+
+export function toneClass(t: Tone): string {
+  return match (t) {
+    ToneNeutral => "ou-tone-neutral",
+    ToneSuccess => "ou-tone-success",
+    ToneDanger => "ou-tone-danger",
+    ToneWarning => "ou-tone-warning",
+    ToneInfo => "ou-tone-info",
+    ToneAccent => "ou-tone-accent",
+  };
+}
+
+export function buttonClass(k: ButtonKind, small: bool): string {
+  const base = match (k) {
+    ButtonPrimary => "ou-btn ou-btn-primary",
+    ButtonSecondary => "ou-btn ou-btn-secondary",
+    ButtonDanger => "ou-btn ou-btn-danger",
+    ButtonGhost => "ou-btn ou-btn-ghost",
+  };
+  return small ? base + " ou-btn-sm" : base;
+}
+
+// The colour-blind-safe categorical palette has seven slots (Okabe and Ito): blue, orange, green, vermillion, sky blue, purple,
+// yellow. A series is drawn with slot `n % 7`; the stylesheet defines `ou-fill-N` and `ou-stroke-N`.
+export function paletteSize(): int {
+  return 7;
+}
+
+export function paletteSlot(n: int): int {
+  const m = n % 7;
+  return m < 0 ? m + 7 : m;
+}
+
+// The tone of a run or app status word: succeeded and running-ok things are success, failed is danger, running is info.
+export function statusTone(status: string): Tone {
+  return match (status) {
+    "succeeded" => ToneSuccess,
+    "ok" => ToneSuccess,
+    "active" => ToneSuccess,
+    "healthy" => ToneSuccess,
+    "failed" => ToneDanger,
+    "dead" => ToneDanger,
+    "error" => ToneDanger,
+    "running" => ToneInfo,
+    "stopped" => ToneNeutral,
+    "warning" => ToneWarning,
+    "warn" => ToneWarning,
+    _ => ToneNeutral,
+  };
+}

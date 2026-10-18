@@ -1,0 +1,57 @@
+// The model and the messages of the todo list. The OX provider (ui.or) needs the message type, so it lives apart from the view.
+export type Filter = All | Active | Done;
+
+export type Todo = { id: int; title: string; done: bool; };
+
+export type Model = { todos: Todo[]; draft: string; nextId: int; filter: Filter; };
+
+export type Msg =
+  Draft(string) // the text field changed
+  | Add // the form was submitted
+  | Toggle(int) // a checkbox changed
+  | Remove(int)
+  | SetFilter(Filter)
+  | ClearDone;
+
+export function init(): Model {
+  return Model { todos: [], draft: "", nextId: 1, filter: All };
+}
+
+export function update(m: Model, msg: Msg): Model {
+  return match (msg) {
+    Draft(s) => Model { ...m, draft: s },
+    Add => addTodo(m),
+    Toggle(id) => Model {
+      ...m,
+      todos: m.todos.map(t => t.id == id ? Todo { ...t, done: !t.done } : t),
+    },
+    Remove(id) => Model { ...m, todos: m.todos.filter(t => t.id != id) },
+    SetFilter(f) => Model { ...m, filter: f },
+    ClearDone => Model { ...m, todos: m.todos.filter(t => !t.done) },
+  };
+}
+
+function addTodo(m: Model): Model {
+  const title = m.draft.trim();
+  if (title.length == 0) {
+    return m;
+  }
+  return Model {
+    ...m,
+    todos: m.todos.concat([Todo { id: m.nextId, title: title, done: false }]),
+    draft: "",
+    nextId: m.nextId + 1,
+  };
+}
+
+export function visible(m: Model): Todo[] {
+  return match (m.filter) {
+    All => m.todos,
+    Active => m.todos.filter(t => !t.done),
+    Done => m.todos.filter(t => t.done),
+  };
+}
+
+export function remaining(m: Model): int {
+  return m.todos.filter(t => !t.done).length.toInt();
+}
