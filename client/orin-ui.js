@@ -277,6 +277,7 @@
 
     function deliver(text) {
       var msg = text;
+      if (text === "") { return; }   // an event without data (a heartbeat, or only a retry hint)
       if (typeof text === "string") {
         try { msg = JSON.parse(text); } catch (e) { onError(e); return; }
       }

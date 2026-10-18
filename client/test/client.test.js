@@ -223,6 +223,12 @@ test("unnumbered messages are applied at once", () => {
   assert.strictEqual(root.childNodes[0].nodeValue, "now");
 });
 
+test("an empty message is a heartbeat and is ignored", () => {
+  const { root, deliver } = numberedRoot({ seq: 0 });
+  deliver("");
+  assert.strictEqual(root.childNodes[0].nodeValue, "start");
+});
+
 test("a mount message resets the sequence and discards what it overtook", () => {
   const { root, deliver } = numberedRoot({ seq: 0 });
   deliver(JSON.stringify(textPatch(3, "late")));
