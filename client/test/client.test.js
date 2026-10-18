@@ -9,8 +9,13 @@ const OrinUI = require("../orin-ui.js");
 
 let passed = 0;
 let failed = 0;
+const asyncTests = [];
+function report(name, e) { failed++; console.error("FAIL " + name + "\n  " + (e && e.stack ? e.stack.split("\n").slice(0, 3).join("\n  ") : e)); }
 function test(name, fn) {
-  try { fn(); passed++; } catch (e) { failed++; console.error("FAIL " + name + "\n  " + (e && e.stack ? e.stack.split("\n").slice(0, 3).join("\n  ") : e)); }
+  try {
+    const r = fn();
+    if (r && typeof r.then === "function") { asyncTests.push(r.then(() => { passed++; }, e => report(name, e))); } else { passed++; }
+  } catch (e) { report(name, e); }
 }
 
 function newRoot() {
@@ -181,6 +186,103 @@ test("close removes the listeners", () => {
   assert.deepStrictEqual(sent, []);
 });
 
+// ---------------------------------------------------------------- numbered messages and the stream
+
+function textPatch(n, text) { return { t: "patch", n: n, ops: [{ op: "text", path: [0], text: text }] }; }
+
+function numberedRoot(options) {
+  const root = newRoot();
+  root.appendChild(root.ownerDocument.createTextNode("start"));
+  let deliverFn = null;
+  const sent = [];
+  const conn = OrinUI.connect(root, Object.assign({ send: (t, d) => { sent.push(JSON.parse(t)); deliverFn = d; } }, options || {}));
+  // reach `deliver` through a round trip of the fake transport
+  conn.send({ t: "event", path: [], event: "click", value: "" });
+  sent.length = 0;
+  return { root, sent, conn, deliver: deliverFn };
+}
+
+test("numbered messages are applied in order even when they arrive out of order", () => {
+  const { root, deliver } = numberedRoot({ seq: 0 });
+  deliver(JSON.stringify(textPatch(1, "second")));
+  assert.strictEqual(root.childNodes[0].nodeValue, "start");
+  deliver(JSON.stringify(textPatch(0, "first")));
+  assert.strictEqual(root.childNodes[0].nodeValue, "second");
+});
+
+test("a numbered message that was already applied is dropped", () => {
+  const { root, deliver } = numberedRoot({ seq: 0 });
+  deliver(JSON.stringify(textPatch(0, "a")));
+  deliver(JSON.stringify(textPatch(0, "b")));
+  assert.strictEqual(root.childNodes[0].nodeValue, "a");
+});
+
+test("unnumbered messages are applied at once", () => {
+  const { root, deliver } = numberedRoot({ seq: 5 });
+  deliver(JSON.stringify({ t: "patch", ops: [{ op: "text", path: [0], text: "now" }] }));
+  assert.strictEqual(root.childNodes[0].nodeValue, "now");
+});
+
+test("a mount message resets the sequence and discards what it overtook", () => {
+  const { root, deliver } = numberedRoot({ seq: 0 });
+  deliver(JSON.stringify(textPatch(3, "late")));
+  deliver(JSON.stringify({ t: "mount", n: 9, dom: ["whole"] }));
+  assert.strictEqual(root.childNodes[0].nodeValue, "whole");
+  deliver(JSON.stringify(textPatch(10, "next")));
+  assert.strictEqual(root.childNodes[0].nodeValue, "next");
+});
+
+test("the first numbered message is accepted when no start number is known", () => {
+  const { root, deliver } = numberedRoot();
+  deliver(JSON.stringify(textPatch(7, "seven")));
+  deliver(JSON.stringify(textPatch(8, "eight")));
+  assert.strictEqual(root.childNodes[0].nodeValue, "eight");
+});
+
+test("a gap that lasts asks for the whole UI", () => {
+  const { sent, deliver, conn } = numberedRoot({ seq: 0, stallMs: 10 });
+  deliver(JSON.stringify(textPatch(2, "x")));
+  return new Promise(resolve => setTimeout(resolve, 60)).then(() => {
+    assert.ok(sent.some(m => m.t === "join"), "join sent");
+    conn.close();
+  });
+});
+
+class FakeEventSource {
+  constructor(url) { this.url = url; this.closed = false; FakeEventSource.last = this; }
+  close() { this.closed = true; }
+}
+
+test("a stream delivers its events as server messages and closes with the connection", () => {
+  const root = newRoot();
+  root.appendChild(root.ownerDocument.createTextNode("start"));
+  const conn = OrinUI.connect(root, { endpoint: "/ui/events", session: "s 1", stream: "/ui/stream", seq: 0, EventSource: FakeEventSource });
+  const es = FakeEventSource.last;
+  assert.strictEqual(es.url, "/ui/stream?s=s%201");
+  es.onmessage({ data: JSON.stringify(textPatch(0, "pushed")) });
+  assert.strictEqual(root.childNodes[0].nodeValue, "pushed");
+  conn.close();
+  assert.strictEqual(es.closed, true);
+});
+
+test("boot reads the stream, the session and the sequence from the mount element", () => {
+  const root = newRoot();
+  root.appendChild(root.ownerDocument.createTextNode("start"));
+  root.setAttribute("data-orin-ui", "/ui/events");
+  root.setAttribute("data-ou-session", "abc");
+  root.setAttribute("data-ou-stream", "/ui/stream?x=1");
+  root.setAttribute("data-ou-seq", "4");
+  global.EventSource = FakeEventSource;
+  try {
+    const conn = OrinUI.boot(root);
+    assert.strictEqual(FakeEventSource.last.url, "/ui/stream?x=1&s=abc");
+    FakeEventSource.last.onmessage({ data: JSON.stringify(textPatch(3, "old")) });   // before the start number: dropped
+    FakeEventSource.last.onmessage({ data: JSON.stringify(textPatch(4, "new")) });
+    assert.strictEqual(root.childNodes[0].nodeValue, "new");
+    conn.close();
+  } finally { delete global.EventSource; }
+});
+
 test("safeUrl", () => {
   assert.strictEqual(OrinUI.safeUrl("/a?b=c:d"), "/a?b=c:d");
   assert.strictEqual(OrinUI.safeUrl("HTTPS://x"), "HTTPS://x");
@@ -190,5 +292,7 @@ test("safeUrl", () => {
   assert.strictEqual(OrinUI.safeUrl("mailto:a@b.c"), "mailto:a@b.c");
 });
 
-console.log(passed + " passed, " + failed + " failed");
-process.exit(failed ? 1 : 0);
+Promise.all(asyncTests).then(() => {
+  console.log(passed + " passed, " + failed + " failed");
+  process.exit(failed ? 1 : 0);
+});

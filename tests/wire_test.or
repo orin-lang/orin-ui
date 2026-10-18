@@ -1,8 +1,8 @@
 import { assertEqString, assertEqual, assert, assertEq } from "std:test";
 import {
   dElement, dKeyed, dText, domAttr, jsonQuote, domJson, patchJson, mountMessage, patchMessage,
-  Create, Remove, Replace, SetAttr, RemoveAttr, SetText, Move, ClientEvent, ClientMessage, Join,
-  Event, parseClientMessage, parseClientEvent,
+  mountMessageSeq, patchMessageSeq, Create, Remove, Replace, SetAttr, RemoveAttr, SetText, Move,
+  ClientEvent, ClientMessage, Join, Event, parseClientMessage, parseClientEvent,
 } from "../src";
 
 @Test
@@ -137,4 +137,18 @@ function rejectsMalformedMessages(): void {
     "path element not an integer",
   );
   assert(parseClientEvent("{\"t\":\"join\"}").isErr(), "join is not an event");
+}
+
+@Test
+function numberedMessages(): void {
+  assertEqString(
+    patchMessageSeq([Remove([0])], 7),
+    "{\"t\":\"patch\",\"n\":7,\"ops\":[{\"op\":\"remove\",\"path\":[0]}]}",
+    "numbered patch",
+  );
+  assertEqString(
+    mountMessageSeq([dText("a")], 0),
+    "{\"t\":\"mount\",\"n\":0,\"dom\":[\"a\"]}",
+    "numbered mount",
+  );
 }

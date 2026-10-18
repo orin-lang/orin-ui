@@ -98,7 +98,9 @@ cd examples/todo && orin run && orin test
 <script src="/orin-ui.js"></script>
 ```
 
-`data-orin-ui` is the endpoint: an HTTP path (events are POSTed, the reply is a patch message) or a `ws://` / `wss://` URL. The
+`data-orin-ui` is the endpoint: an HTTP path (events are POSTed, the reply is a patch message) or a `ws://` / `wss://` URL. Without
+WebSockets a server can still push: `data-ou-stream` names a server-sent events stream, and numbered messages (`patchMessageSeq`)
+keep the two channels in order ([docs/design.md](docs/design.md#push-streams-and-ordered-delivery)). The
 protocol is in [docs/design.md](docs/design.md#the-patch-protocol).
 
 ## Tests

@@ -8,6 +8,11 @@
  * The script boots every element that has a `data-orin-ui` attribute. The attribute is the endpoint: an http(s) path or URL
  * (events are POSTed, the response carries the patches) or a ws:/wss: URL (a WebSocket carries both directions).
  * Optional: `data-ou-session="<id>"` is sent as the `X-Orin-UI-Session` header (HTTP) or in the `s` field (WebSocket).
+ * Optional: `data-ou-stream="<url>"` opens a server-sent events stream (EventSource, `?s=<session>` appended); every event's
+ * data is a server message, which is how a server pushes patches that no client event caused.
+ * Optional: `data-ou-seq="<n>"` is the number of the next numbered message to apply. A server message may carry a number
+ * `"n"`; numbered messages are applied in order whichever channel (event reply, stream) delivers them first, and a gap that
+ * lasts longer than `stallMs` (2000) makes the client ask for the whole UI again (`join`).
  */
 (function (root, factory) {
   var api = factory();
@@ -224,6 +229,10 @@
    *   options.session   optional session id
    *   options.send      replaces the transport: function (text, deliver) -- `deliver(replyText)` for each server message
    *   options.onError   function (error)
+   *   options.stream    URL of a server-sent events stream whose events are server messages (needs EventSource)
+   *   options.EventSource  the constructor to use instead of the global one (tests)
+   *   options.seq       the number of the next numbered message the server will deliver (default: the first one seen)
+   *   options.stallMs   how long a gap in the numbers may last before the client sends `join` (default 2000)
    * Returns { send(eventObject), close(), root }.
    */
   function connect(rootEl, options) {
@@ -238,8 +247,55 @@
     var closed = false;
     var retry = 0;
 
+    var expected = typeof options.seq === "number" ? options.seq : null;   // the number of the next numbered message
+    var pending = {};                                                      // numbered messages that arrived early
+    var stallTimer = null;
+    var stallMs = typeof options.stallMs === "number" ? options.stallMs : 2000;
+
+    function applySafely(msg) {
+      try { applyMessage(rootEl, msg); } catch (e) { onError(e); }
+    }
+
+    function hasPending() { return Object.keys(pending).length > 0; }
+
+    function drain() {
+      while (Object.prototype.hasOwnProperty.call(pending, expected)) {
+        var next = pending[expected];
+        delete pending[expected];
+        expected++;
+        applySafely(next);
+      }
+    }
+
+    function armStall() {
+      if (stallTimer !== null || !hasPending()) { return; }
+      stallTimer = setTimeout(function () {
+        stallTimer = null;
+        if (hasPending() && !closed) { sendObject({ t: "join" }); armStall(); }
+      }, stallMs);
+    }
+
     function deliver(text) {
-      try { applyMessage(rootEl, text); } catch (e) { onError(e); }
+      var msg = text;
+      if (typeof text === "string") {
+        try { msg = JSON.parse(text); } catch (e) { onError(e); return; }
+      }
+      if (!msg || Array.isArray(msg) || typeof msg.n !== "number") { applySafely(msg); return; }
+      if (msg.t === "mount") {
+        // a whole screen: everything before it is obsolete
+        applySafely(msg);
+        expected = msg.n + 1;
+        Object.keys(pending).forEach(function (k) { if (Number(k) <= msg.n) { delete pending[k]; } });
+        drain();
+      } else if (expected === null || msg.n === expected) {
+        expected = msg.n + 1;
+        applySafely(msg);
+        drain();
+      } else if (msg.n > expected) {
+        pending[msg.n] = msg;
+        armStall();
+      }   // msg.n < expected: already applied (a duplicate), drop
+      if (!hasPending() && stallTimer !== null) { clearTimeout(stallTimer); stallTimer = null; }
     }
 
     function postNext() {
@@ -320,9 +376,25 @@
         closed = true;
         listeners.forEach(function (name) { rootEl.removeEventListener(name, onDomEvent, true); });
         if (socket) { socket.close(); }
+        if (source) { source.close(); }
+        if (stallTimer !== null) { clearTimeout(stallTimer); stallTimer = null; }
       },
       busy: function () { return inflight > 0; },
     };
+
+    var source = null;
+    if (options.stream) {
+      var EventSourceCtor = options.EventSource || (typeof EventSource !== "undefined" ? EventSource : null);
+      if (EventSourceCtor) {
+        var streamUrl = options.stream;
+        if (options.session) {
+          streamUrl += (streamUrl.indexOf("?") < 0 ? "?" : "&") + "s=" + encodeURIComponent(options.session);
+        }
+        source = new EventSourceCtor(streamUrl);
+        source.onmessage = function (m) { deliver(m.data); };   // EventSource reconnects by itself
+        source.onerror = function () {};
+      }
+    }
 
     var isWs = /^wss?:/i.test(endpoint);
     if (isWs && !options.send) {
@@ -343,7 +415,13 @@
     if (/^wss?:\/(?!\/)/.test(endpoint) && typeof location !== "undefined") {
       url = (location.protocol === "https:" ? "wss://" : "ws://") + location.host + endpoint.replace(/^wss?:/, "");
     }
-    rootEl.__orinUi = connect(rootEl, { endpoint: url, session: rootEl.getAttribute("data-ou-session") || undefined });
+    var seqAttr = rootEl.getAttribute("data-ou-seq");
+    rootEl.__orinUi = connect(rootEl, {
+      endpoint: url,
+      session: rootEl.getAttribute("data-ou-session") || undefined,
+      stream: rootEl.getAttribute("data-ou-stream") || undefined,
+      seq: seqAttr !== null && seqAttr !== "" && !isNaN(Number(seqAttr)) ? Number(seqAttr) : undefined,
+    });
     return rootEl.__orinUi;
   }
 

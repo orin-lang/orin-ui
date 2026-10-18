@@ -297,6 +297,23 @@ WebSocket) are ignored by `parseClientMessage`.
 
 `OrinUI.connect(rootElement, { send })` replaces the transport with any function, which is how the client is tested.
 
+### Push streams and ordered delivery
+
+HTTP replies only carry the patches a client's own event caused. A server that also wants to push patches (a log that grows, a
+status that changes) has two channels, and the browser may receive their messages in either order, while each patch is only
+valid against the screen the previous one produced. Two optional additions solve that without WebSockets:
+
+* **`data-ou-stream="/ui/stream"`** on the mount element makes the client open an `EventSource` on that URL (with `?s=<session>`
+  appended when `data-ou-session` is set). The `data` of every event is one server message, applied like an HTTP reply.
+  `EventSource` reconnects by itself, so a server may end the response after every batch and set the `retry:` field: a stream
+  that is a poll the browser repeats needs no timer on the server.
+* **Numbered messages.** A server message may carry an integer `"n"` (`mountMessageSeq`, `patchMessageSeq` write them). The
+  server numbers the messages of a session in the order it computed them; the client (`data-ou-seq="N"` says which number it
+  expects first, otherwise the first numbered message it sees) applies them in that order whichever channel delivers them: an
+  early one waits, a repeated one is dropped, a `mount` resets the counter. If a gap lasts more than 2 s the client sends
+  `join`, and the server's `mount` (numbered with the current count) puts it back in step. Messages without `n` are applied
+  at once, as before.
+
 ### Server-side rendering and hydration
 
 `renderPage(title, session.dom, "/orin-ui.js", "/ui/events")` produces a complete page: the markup of the current screen inside

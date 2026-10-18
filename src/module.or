@@ -19,8 +19,8 @@ export { Patch, Create, Remove, Replace, SetAttr, RemoveAttr, SetText, Move, dif
 export { apply } from "./apply";
 export { renderHtml, renderNode, renderPage } from "./render_html";
 export {
-  jsonQuote, domJson, patchJson, mountMessage, patchMessage, ClientEvent, ClientMessage, Join,
-  Event, parseClientMessage, parseClientEvent,
+  jsonQuote, domJson, patchJson, mountMessage, patchMessage, mountMessageSeq, patchMessageSeq,
+  ClientEvent, ClientMessage, Join, Event, parseClientMessage, parseClientEvent,
 } from "./wire";
 export {
   Program, Session, Step, Reply, sessionOf, start, send, sendAll, handleEvent, respond, mountReply,

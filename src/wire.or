@@ -106,6 +106,19 @@ export function patchMessage(patches: Patch[]): string {
   return "{\"t\":\"patch\",\"ops\":[" + patches.map(p => patchJson(p)).join(",") + "]}";
 }
 
+// mountMessageSeq(roots, n) / patchMessageSeq(patches, n) -- the same messages numbered `n` (a field "n"). A server that
+// delivers patches over more than one channel (an event reply and a push stream) numbers them in the order it computed them;
+// the client applies them in that order whichever arrives first. See "Ordered delivery" in docs/design.md.
+export function mountMessageSeq(roots: Dom[], n: int): string {
+  return "{\"t\":\"mount\",\"n\":" + n.toString() + ",\"dom\":["
+      + roots.map(m => domJson(m)).join(",") + "]}";
+}
+
+export function patchMessageSeq(patches: Patch[], n: int): string {
+  return "{\"t\":\"patch\",\"n\":" + n.toString() + ",\"ops\":["
+      + patches.map(q => patchJson(q)).join(",") + "]}";
+}
+
 // ---------------------------------------------------------------- client to server
 
 // An event reported by the client: where (path of the element that handles it), what ("click") and the text payload.
