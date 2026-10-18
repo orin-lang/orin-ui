@@ -1,0 +1,7 @@
+/build/
+*.o
+.orin/
+/.orin-tests-*
+/.orin-lock-*
+orin.lock.tmp
+node_modules/
