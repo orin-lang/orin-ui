@@ -244,7 +244,7 @@
     var statusEl = rootEl.nextElementSibling;
     function status(kind) {
       rootEl.setAttribute("aria-busy", kind === "busy" ? "true" : "false");
-      if (statusEl && statusEl.hasAttribute("data-ou-status")) { statusEl.textContent = rootEl.getAttribute("data-ou-" + kind + "-label") || kind; }
+      if (statusEl && statusEl.getAttribute("data-ou-status") !== null) { statusEl.textContent = rootEl.getAttribute("data-ou-" + kind + "-label") || kind; }
     }
     var inflight = 0;
     var queue = [];
