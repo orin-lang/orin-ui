@@ -240,6 +240,7 @@
     var endpoint = options.endpoint || "";
     var onError = options.onError || function (e) { if (typeof console !== "undefined") { console.error(e); } };
     var state = options.state;
+    var deliveryError = false;
     var statusEl = rootEl.nextElementSibling;
     function status(kind) {
       rootEl.setAttribute("aria-busy", kind === "busy" ? "true" : "false");
@@ -262,7 +263,7 @@
       try {
         applyMessage(rootEl, msg);
         if (msg && (msg.t === "mount" || msg.t === "patch") && Object.prototype.hasOwnProperty.call(msg, "state")) { state = msg.state; }
-      } catch (e) { status("error"); onError(e); }
+      } catch (e) { deliveryError = true; status("error"); onError(e); }
     }
 
     function hasPending() { return Object.keys(pending).length > 0; }
@@ -289,7 +290,7 @@
       var msg = text;
       if (text === "") { return; }   // an event without data (a heartbeat, or only a retry hint)
       if (typeof text === "string") {
-        try { msg = JSON.parse(text); } catch (e) { onError(e); return; }
+        try { msg = JSON.parse(text); } catch (e) { deliveryError = true; status("error"); onError(e); return; }
       }
       if (!msg || Array.isArray(msg) || typeof msg.n !== "number") { applySafely(msg); return; }
       if (msg.t === "mount") {
@@ -312,13 +313,14 @@
     function postNext() {
       if (closed || busy || queue.length === 0) { return; }
       busy = true;
+      deliveryError = false;
       var obj = JSON.parse(queue.shift());
       if (state !== undefined) { obj.state = state; }
       var body = JSON.stringify(obj);
       status("busy");
-      var done = function (failed) { busy = false; inflight--; status(failed ? "error" : "idle"); if (!closed) { postNext(); } };
+      var done = function (failed) { busy = false; inflight--; status(failed || deliveryError ? "error" : "idle"); if (!closed) { postNext(); } };
       if (options.send) {
-        try { options.send(body, deliver); } catch (e) { onError(e); }
+        try { options.send(body, deliver); } catch (e) { deliveryError = true; onError(e); }
         done();
         return;
       }

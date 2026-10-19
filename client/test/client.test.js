@@ -324,6 +324,15 @@ test("HTTP queued requests use the state from the preceding applied reply", asyn
   } finally { conn.close(); global.fetch=originalFetch; }
 });
 
+
+test("malformed transport replies retain the visible failure status", () => {
+  const root = newRoot(); root.appendChild(root.ownerDocument.createTextNode("ready"));
+  const status = root.ownerDocument.createElement("p"); status.setAttribute("data-ou-status", "");
+  root.nextElementSibling = status; root.setAttribute("data-ou-error-label", "failed");
+  const conn = OrinUI.connect(root, {send:(body,deliver)=>deliver("not JSON"),onError:()=>{}});
+  conn.send({t:"join"}); assert.strictEqual(status.textContent,"failed"); conn.close();
+});
+
 Promise.all(asyncTests).then(() => {
   console.log(passed + " passed, " + failed + " failed");
   process.exit(failed ? 1 : 0);
