@@ -4,6 +4,7 @@
 (function () {
   "use strict";
   if (typeof document === "undefined") return;
+  document.documentElement.classList.add("orin-navigation-ready");
   var controller = null, revision = 0, timers = new WeakMap();
   function root() { return document.querySelector("[data-orin-navigation]"); }
   function report(region, message) {

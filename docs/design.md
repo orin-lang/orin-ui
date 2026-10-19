@@ -512,3 +512,5 @@ Downloads and unmarked links/forms retain native browser behavior. Load this ada
 after orin-ui.js using external deferred scripts. CSP can restrict scripts and
 connections to the same origin; applications still enforce authentication and CSRF
 at their event endpoints.
+
+The navigation adapter adds `orin-navigation-ready` to the document element. Applications may use it to hide redundant submit buttons while keeping native fallback controls when the adapter is unavailable.
