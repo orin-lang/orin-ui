@@ -4,10 +4,10 @@
 // are validated, `on*` attributes, `srcdoc` and `script` elements are never written. A Dom that was built by hand and breaks
 // these rules renders as if the offending attribute or element were not there.
 import { escape, escapeUrl } from "std:html";
-import { Dom, DomAttr, DElement, DText, EVENTS_ATTR } from "./dom";
+import { Dom, DomAttr, DElement, DText, EVENTS_ATTR } from "../tree";
 import {
   isValidTag, isForbiddenTag, isValidAttrName, isAllowedAttr, isUrlAttr, isVoidTag, asciiLower,
-} from "./safe";
+} from "../tree";
 
 // renderHtml(nodes) -- the markup of a list of root nodes.
 export function renderHtml(nodes: Dom[]): string {

@@ -1,5 +1,5 @@
 // Layout components: the application shell, sidebar, page header, cards and grids.
-import { Node, Attr, el, text, cls, attr, href, key, classIf, nothing, when } from "../node";
+import { Node, Attr, el, text, cls, attr, href, key, classIf, nothing, when } from "../tree";
 import { Icon } from "./icons";
 
 export type NavItem = { label: string; href: string; icon: string; active: bool; badge: string; };

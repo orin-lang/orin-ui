@@ -1,0 +1,49 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # This library uses std APIs newer than the released beta. Bump the compiler deliberately.
+  ORIN_LANG_REV: 4fca791aa7309ee95fe13c6ecee29d877c01efd9
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install the WebAssembly toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang lld
+      - name: Check out the Orin compiler outside the library workspace
+        run: |
+          git clone https://github.com/orin-lang/orin-lang "$RUNNER_TEMP/orin-lang"
+          git -C "$RUNNER_TEMP/orin-lang" checkout "$ORIN_LANG_REV"
+      - name: Restore the Orin build
+        id: toolchain
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/orin-lang/build
+          key: orin-ui-toolchain-${{ runner.os }}-${{ runner.arch }}-${{ env.ORIN_LANG_REV }}
+      - name: Bootstrap the compiler
+        if: steps.toolchain.outputs.cache-hit != 'true'
+        run: cd "$RUNNER_TEMP/orin-lang" && tools/bootstrap.sh
+      - name: Select the compiler and WebAssembly runner
+        run: |
+          echo "ORIN=$RUNNER_TEMP/orin-lang/tools/orin" >> "$GITHUB_ENV"
+          echo "WASM_RUN=$RUNNER_TEMP/orin-lang/tools/wasm_run.mjs" >> "$GITHUB_ENV"
+          echo "ORIN_TOOLCHAIN=$RUNNER_TEMP/orin-lang" >> "$GITHUB_ENV"
+          echo "CC=clang" >> "$GITHUB_ENV"
+      - name: Architecture, library, examples, client tests and WebAssembly parity
+        run: tools/test-all.sh

@@ -6,7 +6,7 @@ import {
 import { numberAsInt } from "std:json/number";
 import {
   Node, Attr, el, text, cls, attr, href, key, classIf, nothing, when, onClick,
-} from "../node";
+} from "../tree";
 import { Icon } from "./icons";
 import {
   Tone, ToneNeutral, ToneSuccess, ToneDanger, ToneWarning, ToneInfo, ToneAccent, toneClass,

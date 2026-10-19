@@ -4,8 +4,8 @@
 // the next tree and the patches between them. A stateless backend ignores most of that: the HTML backend re-renders; the patch
 // backend only serialises `patches`; a terminal backend could redraw `after`. Backends are pure: they return the text to
 // send, and the caller (a server, a test, a terminal loop) does the I/O.
-import { Dom } from "./dom";
-import { Patch } from "./diff";
+import { Dom } from "../tree";
+import { Patch } from "../reconcile";
 import { renderHtml } from "./render_html";
 import { mountMessage, patchMessage } from "./wire";
 import { renderText, patchesText } from "./render_text";

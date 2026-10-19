@@ -3,13 +3,13 @@
 // Everything is a value. A `Session` holds the current model and the tree the client was last shown; `send` and `handleEvent`
 // return a new session and the patches that turn the old screen into the new one. A server keeps one session per connected
 // client (in a map, a database row, a cookie: its choice) and replaces it with the one it gets back.
-import { Dom } from "./dom";
-import { Node } from "./node";
-import { VNode, resolve, toDom, messageAt } from "./vnode";
-import { Patch, diff } from "./diff";
+import { Dom } from "../tree";
+import { Node } from "../tree";
+import { VNode, resolve, toDom, messageAt } from "../tree";
+import { Patch, diff } from "../reconcile";
 import {
   ClientEvent, ClientMessage, Join, Event, parseClientMessage, mountMessage, patchMessage,
-} from "./wire";
+} from "../render";
 
 // A program: the initial model, how a message changes the model, and how the model is shown.
 //   `update` and `view` must be pure functions of their arguments.

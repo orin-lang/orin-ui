@@ -1,0 +1,3 @@
+// Public interface of the reconcile module. Implementation files are private.
+export { apply } from "./apply";
+export { Create, Move, Patch, Remove, RemoveAttr, Replace, SetAttr, SetText, diff } from "./diff";

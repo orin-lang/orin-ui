@@ -1,7 +1,7 @@
 // The reference implementation of the patch operations on a Dom value. Renderers with state (a terminal, a test double)
 // can use it to keep a mirror of what they show; the tests use it to check that `diff` is correct:
 // `apply(old, diff(old, next)) == next` for every pair of trees.
-import { Dom, DomAttr, DElement, DText } from "./dom";
+import { Dom, DomAttr, DElement, DText } from "../tree";
 import { Patch, Create, Remove, Replace, SetAttr, RemoveAttr, SetText, Move } from "./diff";
 
 // apply(roots, patches) -- the tree after the patches, or an error naming the first patch that does not fit.

@@ -17,7 +17,7 @@
 // diffed in place; unmatched old children are removed, unmatched new children are created, and matched children that are
 // out of order are moved (children on a longest increasing run of the old order stay where they are, so a single insert,
 // delete or move produces a single operation).
-import { Dom, DomAttr, DElement, DText } from "./dom";
+import { Dom, DomAttr, DElement, DText } from "../tree";
 
 export type Patch =
   Create(int[], Dom)

@@ -10,6 +10,9 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 ORIN="${ORIN:-orin}"
 
+echo "== module architecture"
+ORIN="$ORIN" tools/check_modules.sh
+
 echo "== unit tests"
 "$ORIN" test
 
@@ -22,6 +25,9 @@ done
 
 echo "== client tests"
 tools/test-client.sh
+
+echo "== formatting"
+"$ORIN" fmt --check src tests examples tools/fixtures/src
 
 echo "== wasm32-orbit"
 tools/test-wasm.sh

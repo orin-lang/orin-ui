@@ -4,7 +4,7 @@
 // (`<title>` children, which a browser shows on hover) and a legend as real text. Geometry is computed in tenths of a drawing
 // unit with integers (see scale.or). Colours come from the stylesheet's colour-blind-safe palette (`ou-fill-N`, `ou-stroke-N`);
 // the chart never writes a colour itself, so light and dark mode need nothing here.
-import { Node, Attr, el, text, cls, attr, key, style, nothing, classIf } from "../node";
+import { Node, Attr, el, text, cls, attr, key, style, nothing, classIf } from "../tree";
 import { Tone, toneClass, paletteSlot } from "./theme";
 import { Icon } from "./icons";
 import { Scale, scaleTo, tenths, niceTicks, maxOf, sumOf, compactNumber } from "./scale";

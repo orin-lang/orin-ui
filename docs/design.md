@@ -48,22 +48,15 @@ plain, comparable value (`Dom`) and a list of plain operations (`Patch`).
 
 Modules (`src/`):
 
-| File | Contents |
-|---|---|
-| `node.or` | `Node`, `Attr`, builder functions (`el`, `div`, `onClick`, ...), `mapMsg` |
-| `vnode.or` | `resolve`, `toDom`, `messageAt`: from `Node` to `VNode` to `Dom`, and from a path back to a message |
-| `dom.or` | `Dom`, `DomAttr`, helpers |
-| `diff.or` | `Patch`, `diff` |
-| `apply.or` | `apply`: the reference implementation of the patches on a `Dom` |
-| `safe.or` | name validation and URL rules shared by lowering and rendering |
-| `render_html.or` | backend 1: `renderHtml`, `renderPage` |
-| `wire.or` | backend 2: JSON encoding of `Dom` and `Patch`, decoding of client messages |
-| `render_text.or` | backend 3: `renderText`, `patchesText` |
-| `renderer.or` | the `Renderer` interface and the three implementations |
-| `runtime.or` | `Program`, `Session`, `start`, `send`, `handleEvent`, `respond` |
-| `client/orin-ui.js` | the browser side of the patch protocol |
+| Module interface | Responsibility |
+| --- | --- |
+| `tree/module.or` | Node and DOM values, builders, resolution, shared name and URL safety |
+| `reconcile/module.or` | Patch types, diff and reference patch application |
+| `render/module.or` | HTML, text and wire renderers, client message decoding |
+| `runtime/module.or` | Program, Session, event handling and replies |
+| `kit/module.or` | Dashboard components, charts and theme helpers |
 
-`src/module.or` is the public face; `import { ... } from "orin-ui"` sees only what it exports.
+`src/module.or` is the package public face; `import { ... } from "orin-ui"` sees only its explicit exports. Subsystems import one another through the interfaces above. Their permitted dependency edges are checked from `orin.toml`; see [architecture.md](architecture.md).
 
 ## The tree
 
@@ -163,7 +156,7 @@ Paths are child indices from the root list: `[2, 0]` is the first child of the t
 | `Move(parent, from, to)` | take the child at index `from` out of the node at path `parent` (`[]` is the root list) and insert it so that it has index `to`, counted after taking it out |
 
 **The patches are an ordered program.** Apply them one after the other, each to the result of the previous one; the final
-tree equals `next`. `apply` (`src/apply.or`) is the reference implementation. A backend may apply them to a native widget
+tree equals `next`. `apply` (`src/reconcile/apply.or`) is the reference implementation. A backend may apply them to a native widget
 tree, a DOM or anything else with the same shape.
 
 ### Matching children

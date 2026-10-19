@@ -139,3 +139,7 @@ the WebAssembly test host).
 ## License
 
 MIT. Copyright (c) 2026 Henry Schwerdtner and the Orin contributors.
+
+## Module architecture
+
+Implementation is organized into directory modules with explicit `module.or` interfaces and compiler-enforced dependency policies. See [the module map](docs/architecture.md) and run `ORIN=/path/to/orin tools/check_modules.sh` to verify the boundaries. The package-level imports remain compatible.

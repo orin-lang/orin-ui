@@ -2,3 +2,23 @@
 name = "orin-ui"
 version = "0.1.0"
 entry = "src/module.or"
+
+# Compiler-enforced module dependency policy. The package facade preserves the public API.
+
+[modules."."]
+allowed_dependencies = ["kit", "reconcile", "render", "runtime", "tree"]
+
+[modules.tree]
+allowed_dependencies = []
+
+[modules.reconcile]
+allowed_dependencies = ["tree"]
+
+[modules.render]
+allowed_dependencies = ["reconcile", "tree"]
+
+[modules.runtime]
+allowed_dependencies = ["reconcile", "render", "tree"]
+
+[modules.kit]
+allowed_dependencies = ["tree"]

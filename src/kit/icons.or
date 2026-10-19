@@ -1,5 +1,5 @@
 // Icons: 24x24 stroke icons as inline SVG, so they take the colour of the text around them (`currentColor`) and need no files.
-import { Node, attr, cls, el } from "../node";
+import { Node, attr, cls, el } from "../tree";
 
 // The path data of an icon; "" for an unknown name.
 export function iconPath(name: string): string {

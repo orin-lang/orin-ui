@@ -1,0 +1,8 @@
+// Public interface of the render module. Implementation files are private.
+export { renderHtml, renderNode, renderPage } from "./render_html";
+export { patchText, patchesText, renderText } from "./render_text";
+export { HtmlRenderer, PatchStreamRenderer, Renderer, TextRenderer } from "./renderer";
+export {
+  ClientEvent, ClientMessage, Event, Join, domJson, jsonQuote, mountMessage, mountMessageSeq,
+  parseClientEvent, parseClientMessage, patchJson, patchMessage, patchMessageSeq,
+} from "./wire";

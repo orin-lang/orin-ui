@@ -1,6 +1,6 @@
 // Backend 3: text, for terminals and tests. It exists to show that the Dom and the patches are all a backend needs.
-import { Dom, DomAttr, DElement, DText, EVENTS_ATTR } from "./dom";
-import { Patch, Create, Remove, Replace, SetAttr, RemoveAttr, SetText, Move } from "./diff";
+import { Dom, DomAttr, DElement, DText, EVENTS_ATTR } from "../tree";
+import { Patch, Create, Remove, Replace, SetAttr, RemoveAttr, SetText, Move } from "../reconcile";
 
 // renderText(roots) -- an indented outline: one line per node, `tag#id.class name="value" [events]`, text in quotes.
 //   div.counter

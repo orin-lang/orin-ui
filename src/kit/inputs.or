@@ -2,7 +2,7 @@
 import {
   Node, Attr, el, text, cls, attr, href, key, id, value, name, placeholder, inputType, selected,
   disabled, autofocus, onClick, onValue, nothing, classIf,
-} from "../node";
+} from "../tree";
 import { Icon } from "./icons";
 import {
   ButtonKind, ButtonPrimary, ButtonSecondary, ButtonDanger, ButtonGhost, buttonClass,

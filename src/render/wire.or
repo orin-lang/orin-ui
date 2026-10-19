@@ -17,8 +17,8 @@ import {
   ValueNumber,
 } from "std:json";
 import { numberAsInt } from "std:json/number";
-import { Dom, DomAttr, DElement, DText } from "./dom";
-import { Patch, Create, Remove, Replace, SetAttr, RemoveAttr, SetText, Move } from "./diff";
+import { Dom, DomAttr, DElement, DText } from "../tree";
+import { Patch, Create, Remove, Replace, SetAttr, RemoveAttr, SetText, Move } from "../reconcile";
 
 const HEX: string = "0123456789abcdef";
 
