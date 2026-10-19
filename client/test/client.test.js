@@ -298,6 +298,32 @@ test("safeUrl", () => {
   assert.strictEqual(OrinUI.safeUrl("mailto:a@b.c"), "mailto:a@b.c");
 });
 
+
+test("explicit element event values survive nested SVG targets", () => {
+  const { root, sent } = liveRoot();
+  OrinUI.applyMessage(root, { t:"mount", dom:[{t:"svg",a:[],c:[{t:"circle",a:[["data-ou-on","click"],["data-ou-value","1792404000000"]],c:[]}]}] });
+  root.fire("click", root.childNodes[0].childNodes[0]);
+  assert.strictEqual(sent[0].value, "1792404000000");
+});
+test("HTTP queued requests use the state from the preceding applied reply", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+  global.fetch = (url, init) => new Promise(resolve => calls.push({body:JSON.parse(init.body),resolve}));
+  const root = newRoot(); root.appendChild(root.ownerDocument.createTextNode("ready"));
+  const conn = OrinUI.connect(root, {endpoint:"/ui",state:{count:0}});
+  try {
+    conn.send({t:"event",path:[0],event:"click",value:""});
+    conn.send({t:"event",path:[0],event:"click",value:""});
+    assert.strictEqual(calls.length,1); assert.strictEqual(calls[0].body.state.count,0);
+    calls[0].resolve({ok:true,text:async()=>JSON.stringify({t:"patch",ops:[],state:{count:1}})});
+    await new Promise(resolve=>setImmediate(resolve));
+    assert.strictEqual(calls.length,2); assert.strictEqual(calls[1].body.state.count,1);
+    calls[1].resolve({ok:true,text:async()=>JSON.stringify({t:"patch",ops:[],state:{count:2}})});
+    await new Promise(resolve=>setImmediate(resolve));
+    assert.strictEqual(conn.busy(),false);
+  } finally { conn.close(); global.fetch=originalFetch; }
+});
+
 Promise.all(asyncTests).then(() => {
   console.log(passed + " passed, " + failed + " failed");
   process.exit(failed ? 1 : 0);

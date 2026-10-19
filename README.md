@@ -118,7 +118,7 @@ cd examples/todo && orin run && orin test
 
 `data-orin-ui` is the endpoint: an HTTP path (events are POSTed, the reply is a patch message) or a `ws://` / `wss://` URL. Without
 WebSockets a server can still push: `data-ou-stream` names a server-sent events stream, and numbered messages (`patchMessageSeq`)
-keep the two channels in order ([docs/design.md](docs/design.md#push-streams-and-ordered-delivery)). The
+keep the two channels in order ([docs/design.md](docs/design.md#push-streams-and-ordered-delivery)). For stateless HTTP islands and opt-in SSR navigation see [the adapter contract](docs/design.md#stateless-http-islands-and-progressive-ssr-navigation). The
 protocol is in [docs/design.md](docs/design.md#the-patch-protocol).
 
 ## Tests

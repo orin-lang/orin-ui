@@ -482,3 +482,33 @@ backends all work, and the diff keeps rows, tabs and nav links stable through `k
   the HTTP transport, the last reply wins. Prefer `change` events for fields whose value the server rewrites.
 * SVG and MathML elements are created in their namespace by the client; the HTML renderer writes them as plain markup, which
   the HTML parser puts in the right namespace.
+
+## Stateless HTTP islands and progressive SSR navigation
+
+The browser connection accepts optional `options.state`; `boot` reads it from
+`data-ou-state` as JSON. Each HTTP event includes this value as `state`. A successfully
+applied `mount`/`patch` may return a replacement `state`. Requests are serialized;
+state is attached when dequeuing, so a rapid sequence uses the last applied reply.
+This state is untrusted input: applications must validate it and must not use it to
+authorize access. It belongs to the mounted island's memory and is not stored in
+localStorage, sessionStorage or cookies by this adapter.
+
+`data-ou-value` explicitly supplies the value of click-like events on non-form
+nodes (for example selecting a timestamp from an SVG point). Input/change continue
+to report the native control value. Optional status text immediately following the
+mount can be marked `data-ou-status`; `data-ou-busy-label`, `data-ou-idle-label` and
+`data-ou-error-label` on the mount supply application-language labels. The root's
+`aria-busy` reflects HTTP work. Closing a connection stops queued requests and late
+replies from changing an unmounted view.
+
+`client/navigation.js` progressively replaces the region marked
+`data-orin-navigation` using same-origin SSR documents. Opt in links with
+`data-ou-navigate` and GET forms with `data-ou-form`. `data-ou-auto-submit` on a
+control submits its form after change; `data-ou-live` debounces input by 300 ms.
+It retains search focus/selection, aborts superseded requests, updates browser
+history and reboots any orin-ui islands in the replacement region. Mark a status
+node `data-ou-navigation-status` and provide busy/error labels on the region.
+Downloads and unmarked links/forms retain native browser behavior. Load this adapter
+after orin-ui.js using external deferred scripts. CSP can restrict scripts and
+connections to the same origin; applications still enforce authentication and CSRF
+at their event endpoints.

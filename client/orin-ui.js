@@ -205,7 +205,7 @@
       case "submit":
         return formEncoded(handler);
       default:
-        return "";
+        return handler && handler.getAttribute ? (handler.getAttribute("data-ou-value") || "") : "";
     }
   }
 
@@ -239,6 +239,12 @@
     options = options || {};
     var endpoint = options.endpoint || "";
     var onError = options.onError || function (e) { if (typeof console !== "undefined") { console.error(e); } };
+    var state = options.state;
+    var statusEl = rootEl.nextElementSibling;
+    function status(kind) {
+      rootEl.setAttribute("aria-busy", kind === "busy" ? "true" : "false");
+      if (statusEl && statusEl.hasAttribute("data-ou-status")) { statusEl.textContent = rootEl.getAttribute("data-ou-" + kind + "-label") || kind; }
+    }
     var inflight = 0;
     var queue = [];
     var busy = false;
@@ -253,7 +259,10 @@
     var stallMs = typeof options.stallMs === "number" ? options.stallMs : 2000;
 
     function applySafely(msg) {
-      try { applyMessage(rootEl, msg); } catch (e) { onError(e); }
+      try {
+        applyMessage(rootEl, msg);
+        if (msg && (msg.t === "mount" || msg.t === "patch") && Object.prototype.hasOwnProperty.call(msg, "state")) { state = msg.state; }
+      } catch (e) { status("error"); onError(e); }
     }
 
     function hasPending() { return Object.keys(pending).length > 0; }
@@ -276,6 +285,7 @@
     }
 
     function deliver(text) {
+      if (closed) { return; }
       var msg = text;
       if (text === "") { return; }   // an event without data (a heartbeat, or only a retry hint)
       if (typeof text === "string") {
@@ -300,10 +310,13 @@
     }
 
     function postNext() {
-      if (busy || queue.length === 0) { return; }
+      if (closed || busy || queue.length === 0) { return; }
       busy = true;
-      var body = queue.shift();
-      var done = function () { busy = false; inflight--; postNext(); };
+      var obj = JSON.parse(queue.shift());
+      if (state !== undefined) { obj.state = state; }
+      var body = JSON.stringify(obj);
+      status("busy");
+      var done = function (failed) { busy = false; inflight--; status(failed ? "error" : "idle"); if (!closed) { postNext(); } };
       if (options.send) {
         try { options.send(body, deliver); } catch (e) { onError(e); }
         done();
@@ -314,7 +327,7 @@
       fetch(endpoint, { method: "POST", headers: headers, body: body, credentials: "same-origin" })
         .then(function (r) { if (!r.ok) { throw new Error("orin-ui: HTTP " + r.status); } return r.text(); })
         .then(function (text) { if (text) { deliver(text); } done(); })
-        .catch(function (e) { onError(e); done(); });
+        .catch(function (e) { onError(e); done(true); });
     }
 
     function sendObject(obj) {
@@ -417,7 +430,11 @@
       url = (location.protocol === "https:" ? "wss://" : "ws://") + location.host + endpoint.replace(/^wss?:/, "");
     }
     var seqAttr = rootEl.getAttribute("data-ou-seq");
+    var stateAttr = rootEl.getAttribute("data-ou-state");
+    var initialState;
+    if (stateAttr !== null) { try { initialState = JSON.parse(stateAttr); } catch (e) { return null; } }
     rootEl.__orinUi = connect(rootEl, {
+      state: initialState,
       endpoint: url,
       session: rootEl.getAttribute("data-ou-session") || undefined,
       stream: rootEl.getAttribute("data-ou-stream") || undefined,
